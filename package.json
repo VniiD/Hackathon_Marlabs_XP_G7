@@ -1,0 +1,9 @@
+{
+  "name": "hackathon-xp-g7",
+  "private": true,
+  "scripts": {
+    "install:web": "npm --prefix web install",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build"
+  }
+}

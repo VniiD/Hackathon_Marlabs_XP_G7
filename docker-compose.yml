@@ -1,0 +1,36 @@
+services:
+  api:
+    build: .
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    ports: ["8000:8000"]
+    env_file: .env
+    volumes: [".:/app"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: advisor
+      TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
+    command: ["postgres", "-c", "timezone=America/Sao_Paulo"]
+    ports: ["${DB_PORT:-5432}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro   # roda 01_schema.sql e 02_seed.sql na 1ª subida
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d advisor"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:
