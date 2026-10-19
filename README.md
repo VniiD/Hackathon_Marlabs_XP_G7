@@ -2,6 +2,16 @@
 
 Monolito modular em Python (FastAPI) com PostgreSQL, Redis e OpenAI (chat do copiloto).
 
+## Visão geral
+
+Plataforma web para assessores financeiros e clientes da XP: consolida carteiras, prioriza atendimentos por criticidade,
+analisa perfil de risco, traz inteligência de mercado, copiloto com IA (chat e voz) e agendamento de reuniões.
+
+Projeto do **Hackathon Marlabs × XP Inc. (Grupo 7)**, reconhecido como **destaque de inovação do evento**, principalmente
+pela **transcrição e cadastro por voz** (AssemblyAI), pensados como futuro substituto do chat convencional no cadastro.
+
+Mais contexto: [`PITCH.md`](./PITCH.md) (problema, solução e demo) e [`documentacao-projeto.html`](./documentacao-projeto.html).
+
 ## Estrutura
 
 ```
@@ -145,4 +155,34 @@ regras se a OpenAI falhar. Aparece como "Preparação da reunião" no detalhe do
 
 ## Estado atual
 
-Esqueleto: `accounts` e `scheduling` usam memória (a agenda já tem regras e testes; falta persistir); `portfolio` (Open Finance), `market_intelligence` (cotações) são stubs com TODOs. Migrações: `alembic init` pendente (pasta `alembic/` reservada).
+MVP de hackathon: os fluxos principais funcionam de ponta a ponta; algumas integrações ainda usam dados de demonstração.
+
+**Funcionando**
+
+- **Agenda** (`scheduling`): horários livres, conflito de horário (409) e confirmação das duas partes, com testes. Os dados ficam em memória (reiniciar o container zera).
+- **Copiloto** (`copilot_chat`): chat com OpenAI e function calling; só agenda reunião depois de coletar o contexto do cliente (regra validada no servidor). Testes com LLM fake.
+- **Voz**: transcrição pela AssemblyAI (`POST /api/v1/copilot/transcribe`), usada na análise de perfil e no cadastro por voz.
+- **Contas** (`accounts`): usuários, criação de conta, análise de perfil (suitability) e anotações do assessor gravados no PostgreSQL.
+- **Painel do assessor**: briefing de preparação da reunião (contexto do chat, carteira, notícias dos ativos do cliente e pontos de conversa).
+- **Interface web** (`web/`): React + TypeScript, rodando com dados simulados ou com a API.
+
+**Simulado / em aberto**
+
+- **Open Finance** (`portfolio`): integração ainda em stub; a carteira exibida é simulada.
+- **Cotações (Redis) e notícias** (`market_intelligence`): dados de demonstração; coleta automática e sentimento ainda não implementados.
+- **Migrações**: `alembic init` pendente (pasta `alembic/` reservada); o schema vem de `db/01_schema.sql` e `db/02_seed.sql`.
+
+**Próximos passos**
+
+- [ ] Coleta automática de notícias e cálculo de sentimento por ativo
+- [ ] Open Finance real e cotações alimentando o motor de criticidade
+- [ ] Persistir a agenda no PostgreSQL e configurar migrações com Alembic
+- [ ] Login com JWT e alertas em tempo real (WebSocket)
+
+## Uso de IA no desenvolvimento
+
+O projeto foi desenvolvido com apoio de assistentes de IA (Gemini, Claude e GitHub Copilot). O arquivo [`CLAUDE.md`](./CLAUDE.md) reúne o contexto do repositório usado com o assistente de código.
+
+## Licença
+
+Distribuído sob a **GNU GPL v3.0** — veja [`LICENSE`](./LICENSE).
