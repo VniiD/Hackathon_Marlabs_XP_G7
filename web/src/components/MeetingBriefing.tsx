@@ -16,6 +16,16 @@ function Briefing({ briefing }: { briefing: MeetingBriefing }) {
         {formatSlot(briefing.meeting.slot.start)}. {briefing.meeting.topic || "Sem pauta definida"}
       </p>
 
+      {context?.summary && briefing.follow_up && (
+        <aside className="notice briefing-followup">
+          <div>
+            <strong>Resumo encaminhado à assessoria</strong>
+            <p>{context.summary}</p>
+            <p className="small">{briefing.follow_up}</p>
+          </div>
+        </aside>
+      )}
+
       <div className="cols">
         <div className="stack">
           <h3>O que o cliente contou antes de marcar</h3>

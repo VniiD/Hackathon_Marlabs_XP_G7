@@ -26,7 +26,11 @@ async function loadClient(advisorId: number, clientId: number) {
     row,
     suit,
     ...data,
-    news: news.filter((n) => n.affected_clients.some((c) => c.client_id === clientId)),
+    news: news.filter(
+      (n) =>
+        n.affected_clients.some((c) => c.client_id === clientId) ||
+        n.interested_clients.some((c) => c.client_id === clientId),
+    ),
     meetings: meetings.filter((m) => m.client_id === clientId),
     requests: requests.filter((r) => r.client_id === clientId),
   };
@@ -169,7 +173,7 @@ export function AdvisorClient({ advisorId, clientId, onBack }: Props) {
                   </section>
 
                   <section className="panel">
-                    <h2>Notícias que afetam esta carteira</h2>
+                    <h2>Notícias ligadas à carteira e aos interesses</h2>
                     <NewsList news={news} />
                   </section>
                 </div>

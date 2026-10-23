@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends
 
-from src.modules.scheduling.models import Meeting, MeetingConfirm, MeetingRequest, TimeSlot
+from src.modules.scheduling.models import (
+    Meeting,
+    MeetingConfirm,
+    MeetingRequest,
+    TimeSlot,
+)
 from src.modules.scheduling.services import SchedulingService, get_scheduling_service
 
 router = APIRouter(prefix="/scheduling", tags=["scheduling"])

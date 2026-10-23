@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.env
+web/.env
+web/node_modules
+web/dist
+web/.vite
+app.db
+*.log

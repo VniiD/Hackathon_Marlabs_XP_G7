@@ -72,11 +72,13 @@ Um assessor da XP acompanha dezenas de clientes, e a informação de que ele pre
 Cada cliente recebe uma nota de **0 a 100** por dia (`src/modules/advisor_dashboard/engine.py`):
 
 ```text
-score          = mínimo(100, mercado + relacionamento + inatividade)
+score          = mínimo(100, mercado + relacionamento + inatividade + notícias + câmbio + LLM)
 mercado        = queda da carteira no dia (%) × peso do perfil × 5
 relacionamento = 10 × número de gatilhos de relacionamento
 inatividade    = mínimo(dias sem contato ÷ 3, 30)
 ```
+
+Na fila diária, notícias negativas também diferenciam clientes com o mesmo perfil: impacto financeiro soma a exposição percentual afetada (ajustada pelo perfil, limitado a 40 pontos) e notícia negativa de interesse pessoal acrescenta 10 pontos por matéria, limitado a 20. Notícias positivas e neutras não aumentam a criticidade. O agregador atual ainda não fornece os sinais de queda diária, gatilhos de relacionamento e inatividade ao motor.
 
 **Peso do perfil:** quanto maior a aversão a risco, mais uma queda pesa.
 
@@ -88,7 +90,7 @@ inatividade    = mínimo(dias sem contato ÷ 3, 30)
 
 **Gatilhos de relacionamento** (`src/modules/advisor_dashboard/orm.py`): aniversário hoje · data da família em até 7 dias · 30 dias ou mais sem contato.
 
-**Faixas no painel** (`web/src/lib.ts`): 70 ou mais = **Crítico** · 40 a 69 = **Atenção** · abaixo de 40 = **Estável**.
+**Faixas no painel** (`web/src/lib.ts`): 40 ou mais = **Crítico** · 10 a 39 = **Atenção** · abaixo de 10 = **Estável**. A fila do assessor exibe primeiro o maior score e alerta no cabeçalho quando há clientes que requerem revisão.
 
 **Próxima melhor ação:** queda em carteira conservadora → *"Ligar para acalmar e revisar exposição"*; aniversário → *"Enviar felicitações"*; demais casos → *"Contato de acompanhamento"*.
 

@@ -20,37 +20,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => null);
     throw new ApiError(res.status, body?.detail ?? res.statusText);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
 const post = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
-// Rotas marcadas com "pendente" ainda não existem no FastAPI.
 export const httpApi: Api = {
   listProfiles: () => request("/accounts/profiles"),
   signUp: (name, email) => post("/accounts/signup", { name, email }),
-  getNews: async (_advisorId) => {
-    const items = await request<Array<{
-      source: string;
-      title: string;
-      url: string;
-      published_at: string;
-      related_tickers: string[];
-      sentiment: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
-    }>>(`/market/news`);
-    return items.map((n, index) => ({
-      id: index + 1,
-      source: n.source,
-      title: n.title,
-      summary: n.title,
-      url: n.url,
-      published_at: n.published_at,
-      related_tickers: n.related_tickers,
-      sentiment: n.sentiment,
-      affected_clients: [],
-    }));
-  },
+  getNews: (advisorId) => request(`/advisor/${advisorId}/news-impact`),
   getMeetings: (advisorId) => request(`/scheduling/advisors/${advisorId}/meetings`),
   getClientMeetings: (clientId) => request(`/scheduling/clients/${clientId}/meetings`),
   getFreeSlots: (advisorId) => request(`/scheduling/advisors/${advisorId}/free-slots`),
@@ -64,8 +44,17 @@ export const httpApi: Api = {
   resetSuitability: async (_clientId) => {
     throw new ApiError(501, "Reiniciar a análise de perfil ainda não está disponível na API real.");
   },
-  transcribe: async (_audio) => {
-    throw new ApiError(501, "Transcrição de áudio ainda não está disponível na API real.");
+  transcribe: async (audio) => {
+    const res = await fetch(`${BASE_URL}/copilot/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": audio.type || "application/octet-stream" },
+      body: audio,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(res.status, body?.detail ?? res.statusText);
+    }
+    return res.json() as Promise<{ text: string }>;
   },
   requestChange: (req) => post(`/portfolio/${req.client_id}/change-requests`, req),
   getOverview: (advisorId) => request(`/advisor/${advisorId}/overview`),
@@ -91,16 +80,15 @@ export const httpApi: Api = {
     }),
   getMeetingBriefing: async (advisorId, meetingId) =>
     request(`/advisor/${advisorId}/meetings/${meetingId}/briefing`),
-  getNotes: async (_clientId) => {
-    throw new ApiError(501, "As anotações do assessor ainda não estão expostas pela API real.");
-  },
-  addNote: async (_clientId, _advisorId, _text) => {
-    throw new ApiError(501, "Adicionar anotações ainda não está disponível na API real.");
-  },
-  editNote: async (_noteId, _text) => {
-    throw new ApiError(501, "Editar anotações ainda não está disponível na API real.");
-  },
-  deleteNote: async (_noteId) => {
-    throw new ApiError(501, "Apagar anotações ainda não está disponível na API real.");
-  },
+  getNotes: (clientId, advisorId) =>
+    request(`/accounts/advisors/${advisorId}/clients/${clientId}/notes`),
+  addNote: (clientId, advisorId, text) =>
+    post(`/accounts/advisors/${advisorId}/clients/${clientId}/notes`, { text }),
+  editNote: (noteId, advisorId, text) =>
+    request(`/accounts/advisors/${advisorId}/notes/${noteId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }),
+  deleteNote: (noteId, advisorId) =>
+    request(`/accounts/advisors/${advisorId}/notes/${noteId}`, { method: "DELETE" }),
 };

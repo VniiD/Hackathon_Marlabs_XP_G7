@@ -16,7 +16,9 @@ async def get_news(
     try:
         return await svc.fetch_news()
     except Exception as exc:  # pragma: no cover - proteção de integração externa
-        raise HTTPException(502, f"Não foi possível carregar o feed de notícias: {exc}") from exc
+        raise HTTPException(
+            502, f"Não foi possível carregar o feed de notícias: {exc}"
+        ) from exc
 
 
 @router.get("/currency-line", response_model=list[CurrencyRate])
@@ -26,7 +28,9 @@ async def get_currency_line(
     try:
         return await svc.fetch_currency_line()
     except Exception as exc:  # pragma: no cover - proteção de integração externa
-        raise HTTPException(502, f"Não foi possível carregar a linha de câmbio: {exc}") from exc
+        raise HTTPException(
+            502, f"Não foi possível carregar a linha de câmbio: {exc}"
+        ) from exc
 
 
 @router.get("/quotes/{ticker}", response_model=Quote)

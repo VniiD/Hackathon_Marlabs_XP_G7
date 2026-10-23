@@ -1,11 +1,17 @@
 """Carteiras e reuniões de demonstração para os stores em memória.
 
 Os clientes vêm do banco (db/02_seed.sql); aqui só casamos pelo nome."""
+
 from datetime import date
 from decimal import Decimal
 
 from src.core.database import SessionLocal
-from src.modules.accounts.models import ClientCreate, FamilyDate, PersonalContext, RiskProfile
+from src.modules.accounts.models import (
+    ClientCreate,
+    FamilyDate,
+    PersonalContext,
+    RiskProfile,
+)
 from src.modules.accounts.services import AccountsService
 from src.modules.copilot_chat.tools import INTAKE_QUESTIONS, build_meeting_context
 from src.modules.portfolio.models import AssetClass, ExternalAccount, Holding
@@ -17,7 +23,13 @@ from src.modules.scheduling.services import get_scheduling_service
 ADVISOR_ID = 1
 
 
-def _h(ticker: str, asset_class: AssetClass, quantity: str, value: str, institution: str = "INTERNAL") -> Holding:
+def _h(
+    ticker: str,
+    asset_class: AssetClass,
+    quantity: str,
+    value: str,
+    institution: str = "INTERNAL",
+) -> Holding:
     return Holding(
         ticker=ticker,
         asset_class=asset_class,
@@ -27,7 +39,12 @@ def _h(ticker: str, asset_class: AssetClass, quantity: str, value: str, institut
     )
 
 
-_RF, _AC, _FU, _CR = AssetClass.RENDA_FIXA, AssetClass.ACOES, AssetClass.FUNDOS, AssetClass.CRIPTO
+_RF, _AC, _FU, _CR = (
+    AssetClass.RENDA_FIXA,
+    AssetClass.ACOES,
+    AssetClass.FUNDOS,
+    AssetClass.CRIPTO,
+)
 
 _CLIENTS: list[tuple[ClientCreate, list[Holding], list[ExternalAccount]]] = [
     (
@@ -39,7 +56,9 @@ _CLIENTS: list[tuple[ClientCreate, list[Holding], list[ExternalAccount]]] = [
             context=PersonalContext(
                 hobbies=["Jardinagem", "Viagens"],
                 favorite_team="Palmeiras",
-                family_dates=[FamilyDate(label="Aniversário do neto", date=date(2026, 10, 18))],
+                family_dates=[
+                    FamilyDate(label="Aniversário do neto", date=date(2026, 10, 18))
+                ],
             ),
         ),
         [
@@ -62,7 +81,9 @@ _CLIENTS: list[tuple[ClientCreate, list[Holding], list[ExternalAccount]]] = [
             email="rafael@exemplo.com",
             advisor_id=ADVISOR_ID,
             risk_profile=RiskProfile.ARROJADO,
-            context=PersonalContext(hobbies=["Ciclismo", "Vinhos"], favorite_team="Flamengo"),
+            context=PersonalContext(
+                hobbies=["Ciclismo", "Vinhos"], favorite_team="Flamengo"
+            ),
         ),
         [
             _h("PETR4", _AC, "9000", "342900.00"),
@@ -90,7 +111,9 @@ _CLIENTS: list[tuple[ClientCreate, list[Holding], list[ExternalAccount]]] = [
         ],
         [
             ExternalAccount(
-                institution="Corretora Litoral", account_id="LIT-4471", balance=Decimal("32100.00")
+                institution="Corretora Litoral",
+                account_id="LIT-4471",
+                balance=Decimal("32100.00"),
             )
         ],
     ),
@@ -161,10 +184,12 @@ _CAMILA_ANSWERS = {
 }
 _CONTEXTS = {
     "Camila Prates": build_meeting_context(
-        {k: ContextAnswer(key=k, question=INTAKE_QUESTIONS[k], answer=a) for k, a in _CAMILA_ANSWERS.items()}
+        {
+            k: ContextAnswer(key=k, question=INTAKE_QUESTIONS[k], answer=a)
+            for k, a in _CAMILA_ANSWERS.items()
+        }
     )
 }
-
 
 
 def _seed_meetings(client_ids: dict[str, int]) -> None:

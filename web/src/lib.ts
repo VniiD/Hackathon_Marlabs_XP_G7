@@ -87,8 +87,8 @@ export const initials = (name: string) => {
 export const firstName = (name: string) => name.trim().split(/\s+/)[0];
 
 export function severity(score: number): { level: "high" | "medium" | "low"; label: string } {
-  if (score >= 70) return { level: "high", label: "Crítico" };
-  if (score >= 40) return { level: "medium", label: "Atenção" };
+  if (score >= 40) return { level: "high", label: "Crítico" };
+  if (score >= 10) return { level: "medium", label: "Atenção" };
   return { level: "low", label: "Estável" };
 }
 
@@ -112,6 +112,56 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[]): Async<T> {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return state;
+}
+
+/** Atualiza dados periodicamente sem apagar o último resultado durante o refresh. */
+export function usePollingAsync<T>(
+  load: () => Promise<T>,
+  deps: unknown[],
+  intervalMs = 60_000,
+): Async<T> {
+  const [state, setState] = useState<Async<T>>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    let hasLoaded = false;
+
+    async function refresh() {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const data = await load();
+        if (!cancelled) {
+          hasLoaded = true;
+          setState({ status: "ready", data });
+        }
+      } catch (error) {
+        if (!cancelled && !hasLoaded) {
+          setState({ status: "error", error: errorText(error) });
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, intervalMs);
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+    // load/deps are intentionally controlled by the caller's dependency list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 

@@ -8,12 +8,13 @@ const MAX_LENGTH = 500;
 
 interface NoteCardProps {
   note: AdvisorNote;
+  advisorId: number;
   onChanged: (note: AdvisorNote) => void;
   onDeleted: (id: number) => void;
   onError: (message: string) => void;
 }
 
-function NoteCard({ note, onChanged, onDeleted, onError }: NoteCardProps) {
+function NoteCard({ note, advisorId, onChanged, onDeleted, onError }: NoteCardProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(note.text);
   const [busy, setBusy] = useState(false);
@@ -31,13 +32,13 @@ function NoteCard({ note, onChanged, onDeleted, onError }: NoteCardProps) {
 
   const save = () =>
     run(async () => {
-      onChanged(await api.editNote(note.id, text.trim()));
+      onChanged(await api.editNote(note.id, advisorId, text.trim()));
       setEditing(false);
     }, "A anotação não foi alterada.");
 
   const remove = () =>
     run(async () => {
-      await api.deleteNote(note.id);
+      await api.deleteNote(note.id, advisorId);
       onDeleted(note.id);
     }, "A anotação não foi apagada.");
 
@@ -113,10 +114,10 @@ export function NotesDrawer({ advisorId, clientId }: { advisorId: number; client
 
   useEffect(() => {
     api
-      .getNotes(clientId)
+      .getNotes(clientId, advisorId)
       .then(setNotes)
       .catch((e) => setError(`As anotações não carregaram. (${errorText(e)})`));
-  }, [clientId]);
+  }, [advisorId, clientId]);
 
   useEffect(() => {
     if (!open) return;
@@ -221,6 +222,7 @@ export function NotesDrawer({ advisorId, clientId }: { advisorId: number; client
             <NoteCard
               key={note.id}
               note={note}
+              advisorId={advisorId}
               onChanged={(changed) =>
                 setNotes((list) => list?.map((n) => (n.id === changed.id ? changed : n)) ?? null)
               }

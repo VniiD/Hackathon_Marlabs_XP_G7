@@ -11,4 +11,10 @@ google-generativeai>=0.8
 openai>=1.40
 httpx>=0.27
 requests>=2.32
+defusedxml>=0.7.1,<1
+faster-whisper>=1.1,<2
+av>=11,<19
 pytest>=8.0
+mypy>=1.11
+types-defusedxml
+flake8>=7.1

@@ -14,7 +14,11 @@ from src.modules.accounts.models import (
     User,
     UserRole,
 )
-from src.modules.accounts.orm import AdvisorProfileRecord, ClientProfileRecord, UserRecord
+from src.modules.accounts.orm import (
+    AdvisorProfileRecord,
+    ClientProfileRecord,
+    UserRecord,
+)
 
 
 class AccountsService:
@@ -51,20 +55,25 @@ class AccountsService:
                     )
                     db.add(advisor)
                     db.flush()
-                    db.add(AdvisorProfileRecord(user_id=self.ADVISOR_ID, crm_code="A10001"))
+                    db.add(
+                        AdvisorProfileRecord(user_id=self.ADVISOR_ID, crm_code="A10001")
+                    )
                     db.commit()
                 self._fallback_mode = False
         except OperationalError:
             self._fallback_mode = True
 
-    def _profile_from_client(self, client: ClientProfile, needs_onboarding: bool | None = None) -> LoginProfile:
+    def _profile_from_client(
+        self, client: ClientProfile, needs_onboarding: bool | None = None
+    ) -> LoginProfile:
         return LoginProfile(
             id=client.user.id,
             name=client.user.name,
             email=client.user.email,
             role=client.user.role,
-            needs_onboarding=
-                needs_onboarding if needs_onboarding is not None else client.user.id in self._pending_onboarding,
+            needs_onboarding=needs_onboarding
+            if needs_onboarding is not None
+            else client.user.id in self._pending_onboarding,
         )
 
     def create_client(self, data: ClientCreate) -> ClientProfile:
@@ -74,9 +83,17 @@ class AccountsService:
             raise DomainError("Nome e e-mail são obrigatórios.")
 
         if self._fallback_mode:
-            client_id = max([self.ADVISOR_ID, *self._clients.keys()], default=self.ADVISOR_ID) + 1
+            client_id = (
+                max([self.ADVISOR_ID, *self._clients.keys()], default=self.ADVISOR_ID)
+                + 1
+            )
             profile = ClientProfile(
-                user=User(id=client_id, name=clean_name, email=clean_email, role=UserRole.CLIENT),
+                user=User(
+                    id=client_id,
+                    name=clean_name,
+                    email=clean_email,
+                    role=UserRole.CLIENT,
+                ),
                 advisor_id=data.advisor_id,
                 risk_profile=data.risk_profile,
                 context=data.context,
@@ -85,13 +102,17 @@ class AccountsService:
             return profile
 
         with SessionLocal() as db:
-            existing = db.execute(
-                select(UserRecord).where(UserRecord.email.ilike(clean_email))
-            ).scalars().first()
+            existing = (
+                db.execute(
+                    select(UserRecord).where(UserRecord.email.ilike(clean_email))
+                )
+                .scalars()
+                .first()
+            )
             if existing is not None:
                 raise DomainError(f"Usuário com e-mail {clean_email} já cadastrado.")
 
-            profile = ClientProfileRecord.from_create(
+            record = ClientProfileRecord.from_create(
                 ClientCreate(
                     name=clean_name,
                     email=clean_email,
@@ -100,14 +121,16 @@ class AccountsService:
                     context=data.context,
                 )
             )
-            db.add(profile)
+            db.add(record)
             db.commit()
-            db.refresh(profile)
-            if profile.user is not None:
-                db.refresh(profile.user)
-            return profile.to_model()
+            db.refresh(record)
+            if record.user is not None:
+                db.refresh(record.user)
+            return record.to_model()
 
-    def sign_up(self, name: str, email: str, advisor_id: int = ADVISOR_ID) -> LoginProfile:
+    def sign_up(
+        self, name: str, email: str, advisor_id: int = ADVISOR_ID
+    ) -> LoginProfile:
         clean_name = name.strip()
         clean_email = email.strip()
         if not clean_name or not clean_email:
@@ -140,22 +163,79 @@ class AccountsService:
 
     def list_clients_by_advisor(self, advisor_id: int) -> list[ClientProfile]:
         if self._fallback_mode:
-            return [client for client in self._clients.values() if client.advisor_id == advisor_id]
+            return [
+                client
+                for client in self._clients.values()
+                if client.advisor_id == advisor_id
+            ]
 
         with SessionLocal() as db:
-            clients = db.execute(
-                select(ClientProfileRecord).where(ClientProfileRecord.advisor_id == advisor_id)
-            ).scalars().all()
+            clients = (
+                db.execute(
+                    select(ClientProfileRecord).where(
+                        ClientProfileRecord.advisor_id == advisor_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
             return [client.to_model() for client in clients]
+
+    def list_users(self) -> list[User]:
+        if self._fallback_mode:
+            users = [
+                User(
+                    id=self._advisor.id,
+                    name=self._advisor.name,
+                    email=self._advisor.email,
+                    role=self._advisor.role,
+                )
+            ]
+            users.extend(client.user for client in self._clients.values())
+            return users
+
+        with SessionLocal() as db:
+            records = db.execute(select(UserRecord).order_by(UserRecord.id))
+            return [record.to_model() for record in records.scalars()]
+
+    def find_client(self, client_id: int) -> ClientProfile | None:
+        try:
+            return self.get_client(client_id)
+        except NotFoundError:
+            return None
+
+    def set_risk_profile(
+        self, client_id: int, risk_profile: RiskProfile
+    ) -> ClientProfile:
+        if self._fallback_mode:
+            client = self.find_client(client_id)
+            if client is None:
+                raise NotFoundError(f"Cliente {client_id} não encontrado")
+            updated = client.model_copy(update={"risk_profile": risk_profile})
+            self._clients[client_id] = updated
+            return updated
+
+        with SessionLocal() as db:
+            record = db.get(ClientProfileRecord, client_id)
+            if record is None:
+                raise NotFoundError(f"Cliente {client_id} não encontrado")
+            record.risk_profile = risk_profile.value
+            db.commit()
+            db.refresh(record)
+            return record.to_model()
 
     def list_profiles(self) -> list[LoginProfile]:
         if self._fallback_mode:
-            profiles = [self._advisor]
-            profiles.extend(self._profile_from_client(client) for client in self._clients.values())
-            return profiles
+            fallback_profiles = [self._advisor]
+            fallback_profiles.extend(
+                self._profile_from_client(client) for client in self._clients.values()
+            )
+            return fallback_profiles
 
         with SessionLocal() as db:
-            users = db.execute(select(UserRecord).order_by(UserRecord.id)).scalars().all()
+            users = (
+                db.execute(select(UserRecord).order_by(UserRecord.id)).scalars().all()
+            )
 
         profiles: list[LoginProfile] = []
         for user in users:
@@ -186,11 +266,15 @@ class AccountsService:
         client = self.get_client(client_id)
         current = self._suitability.get(client_id)
         if current is None:
-            current = Suitability(client_id=client_id, answers=[], risk_profile=client.risk_profile)
+            current = Suitability(
+                client_id=client_id, answers=[], risk_profile=client.risk_profile
+            )
             self._suitability[client_id] = current
         return current
 
-    def answer_suitability(self, client_id: int, answer: SuitabilityAnswer) -> Suitability:
+    def answer_suitability(
+        self, client_id: int, answer: SuitabilityAnswer
+    ) -> Suitability:
         current = self.get_suitability(client_id)
         updated = Suitability(
             client_id=client_id,

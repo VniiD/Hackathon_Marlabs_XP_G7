@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date as Date
+from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserRole(StrEnum):
@@ -17,7 +18,7 @@ class RiskProfile(StrEnum):
 
 class FamilyDate(BaseModel):
     label: str = Field(examples=["Aniversário da filha"])
-    date: date
+    date: Date
 
 
 class PersonalContext(BaseModel):
@@ -69,7 +70,30 @@ class SuitabilityAnswer(BaseModel):
     option_index: int | None = None
 
 
+SuitabilityAnswerIn = SuitabilityAnswer
+
+
 class Suitability(BaseModel):
     client_id: int
     answers: list[SuitabilityAnswer] = []
     risk_profile: RiskProfile | None = None
+
+
+class AdvisorNote(BaseModel):
+    id: int
+    client_id: int
+    advisor_id: int
+    text: str
+    created_at: datetime
+
+
+class AdvisorNoteText(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def clean_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A anotação não pode ficar vazia.")
+        return value

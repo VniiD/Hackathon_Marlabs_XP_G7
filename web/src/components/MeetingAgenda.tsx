@@ -51,6 +51,9 @@ function MeetingRow({ meeting, viewer, name, showDay, onOpenClient, onConfirmed 
         <strong>{name}</strong>
         <span className="muted">{showDay ? `${formatSlot(meeting.slot.start)}. ${topic}` : topic}</span>
         {heardFromClient && <span className="muted small">Cliente contou no chat: {heardFromClient}</span>}
+        {viewer.role === "ADVISOR" && meeting.context?.summary && (
+          <span className="tag tag-accent">Retornar com resumo</span>
+        )}
       </span>
     </>
   );

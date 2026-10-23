@@ -1,4 +1,5 @@
 """Function Calling: ações e consultas que o copiloto pode disparar."""
+
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
@@ -41,13 +42,19 @@ def build_meeting_context(answers: dict[str, ContextAnswer]) -> MeetingContext:
     return MeetingContext(answers=ordered, summary=summary)
 
 
-def _tool(name: str, description: str, properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
+def _tool(
+    name: str, description: str, properties: dict[str, Any], required: list[str]
+) -> dict[str, Any]:
     return {
         "type": "function",
         "function": {
             "name": name,
             "description": description,
-            "parameters": {"type": "object", "properties": properties, "required": required},
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
         },
     }
 
@@ -118,7 +125,9 @@ class CopilotTools:
         answered = self._store.intake(client_id)
         return [k for k in INTAKE_QUESTIONS if k not in answered]
 
-    def run(self, client_id: int, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def run(
+        self, client_id: int, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """Executa uma tool a pedido do modelo. O cliente vem da sessão, nunca dos argumentos."""
         handler = getattr(self, f"_tool_{name}", None)
         if handler is None:
@@ -134,7 +143,10 @@ class CopilotTools:
 
     def _holdings(self, client_id: int) -> list[Holding]:
         portfolio = self._portfolio.get_unified_portfolio(client_id)
-        return [*portfolio.internal_holdings, *(h for a in portfolio.external_accounts for h in a.holdings)]
+        return [
+            *portfolio.internal_holdings,
+            *(h for a in portfolio.external_accounts for h in a.holdings),
+        ]
 
     def _tool_get_portfolio_summary(self, client_id: int) -> dict[str, Any]:
         portfolio = self._portfolio.get_unified_portfolio(client_id)
@@ -153,11 +165,15 @@ class CopilotTools:
                     "value": str(value),
                     "share_pct": round(float(value / total * 100), 1) if total else 0,
                 }
-                for cls, value in sorted(by_class.items(), key=lambda kv: kv[1], reverse=True)
+                for cls, value in sorted(
+                    by_class.items(), key=lambda kv: kv[1], reverse=True
+                )
             ],
             "top_holdings": [
                 {"ticker": h.ticker, "value": str(h.market_value)}
-                for h in sorted(holdings, key=lambda h: h.market_value, reverse=True)[:5]
+                for h in sorted(holdings, key=lambda h: h.market_value, reverse=True)[
+                    :5
+                ]
             ],
         }
 
@@ -165,7 +181,12 @@ class CopilotTools:
         tickers = [h.ticker for h in self._holdings(client_id)]
         return {
             "news": [
-                {"title": n.title, "summary": n.summary, "sentiment": n.sentiment.value, "tickers": n.related_tickers}
+                {
+                    "title": n.title,
+                    "summary": n.summary,
+                    "sentiment": n.sentiment.value,
+                    "tickers": n.related_tickers,
+                }
                 for n in self._market.list_news(tickers)
             ]
         }
@@ -173,25 +194,43 @@ class CopilotTools:
     def _tool_get_free_slots(self, client_id: int) -> dict[str, Any]:
         advisor_id = self._accounts.get_client(client_id).advisor_id
         slots = self._scheduling.find_free_slots(advisor_id, limit=SLOT_CHOICES)
-        return {"slots": [{"start": s.start.isoformat(), "end": s.end.isoformat()} for s in slots]}
+        return {
+            "slots": [
+                {"start": s.start.isoformat(), "end": s.end.isoformat()} for s in slots
+            ]
+        }
 
     # --- ações ---------------------------------------------------------------------
 
-    def _tool_save_meeting_context(self, client_id: int, **answers: Any) -> dict[str, Any]:
+    def _tool_save_meeting_context(
+        self, client_id: int, **answers: Any
+    ) -> dict[str, Any]:
         unknown = [k for k in answers if k not in INTAKE_QUESTIONS]
         if unknown:
-            return {"status": "error", "message": f"Campos desconhecidos: {', '.join(unknown)}"}
+            return {
+                "status": "error",
+                "message": f"Campos desconhecidos: {', '.join(unknown)}",
+            }
         saved = []
         for key, value in answers.items():
             text = value.strip() if isinstance(value, str) else ""
             if text:
                 self._store.save_answer(
-                    client_id, ContextAnswer(key=key, question=INTAKE_QUESTIONS[key], answer=text)
+                    client_id,
+                    ContextAnswer(key=key, question=INTAKE_QUESTIONS[key], answer=text),
                 )
                 saved.append(key)
         if not saved:
-            return {"status": "error", "message": "Nenhuma resposta preenchida", "missing": self.missing_context(client_id)}
-        return {"status": "saved", "saved": saved, "missing": self.missing_context(client_id)}
+            return {
+                "status": "error",
+                "message": "Nenhuma resposta preenchida",
+                "missing": self.missing_context(client_id),
+            }
+        return {
+            "status": "saved",
+            "saved": saved,
+            "missing": self.missing_context(client_id),
+        }
 
     def _tool_schedule_meeting(
         self, client_id: int, topic: str, slot_start: str | None = None
@@ -201,7 +240,9 @@ class CopilotTools:
             return {
                 "status": "missing_context",
                 "message": "Ainda faltam respostas do cliente. Pergunte e registre antes de marcar.",
-                "missing": [{"key": k, "question": INTAKE_QUESTIONS[k]} for k in missing],
+                "missing": [
+                    {"key": k, "question": INTAKE_QUESTIONS[k]} for k in missing
+                ],
             }
         advisor_id = self._accounts.get_client(client_id).advisor_id
         answers = self._store.intake(client_id)
@@ -224,12 +265,16 @@ class CopilotTools:
         try:
             wanted = datetime.fromisoformat(slot_start)
         except ValueError:
-            raise DomainError("Horário inválido: use um dos devolvidos por get_free_slots") from None
+            raise DomainError(
+                "Horário inválido: use um dos devolvidos por get_free_slots"
+            ) from None
         wanted = wanted if wanted.tzinfo else wanted.replace(tzinfo=LOCAL_TZ)
         for slot in self._scheduling.find_free_slots(advisor_id, limit=50):
             if slot.start == wanted:
                 return slot
-        raise DomainError("Esse horário não está livre; escolha outro de get_free_slots")
+        raise DomainError(
+            "Esse horário não está livre; escolha outro de get_free_slots"
+        )
 
     def _tool_update_portfolio(self, client_id: int, **changes: Any) -> dict[str, Any]:
         return {"status": "not_implemented", "client_id": client_id}  # TODO

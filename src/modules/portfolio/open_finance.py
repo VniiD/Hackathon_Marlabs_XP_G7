@@ -9,7 +9,9 @@ class OpenFinanceIntegrationService:
         self._base_url = settings.open_finance_base_url
         self._external_accounts: dict[int, list[ExternalAccount]] = {}
 
-    def link_external_accounts(self, client_id: int, accounts: list[ExternalAccount]) -> None:
+    def link_external_accounts(
+        self, client_id: int, accounts: list[ExternalAccount]
+    ) -> None:
         self._external_accounts[client_id] = list(accounts)
 
     def fetch_external_accounts(self, client_id: int) -> list[ExternalAccount]:

@@ -23,12 +23,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
             seed_demo_data()
         except Exception:
-            logger.warning("Dados de demonstração não carregados (o Postgres está no ar?)", exc_info=True)
+            logger.warning(
+                "Dados de demonstração não carregados (o Postgres está no ar?)",
+                exc_info=True,
+            )
     yield
 
 
 logger = logging.getLogger("uvicorn.error")
-app = FastAPI(title="Plataforma Inteligente para Assessores Financeiros", lifespan=lifespan)
+app = FastAPI(
+    title="Plataforma Inteligente para Assessores Financeiros", lifespan=lifespan
+)
 register_exception_handlers(app)
 
 for r in (

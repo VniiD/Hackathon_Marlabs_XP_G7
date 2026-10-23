@@ -2,7 +2,12 @@ from datetime import datetime
 from decimal import Decimal
 
 from src.modules.accounts.services import get_accounts_service
-from src.modules.portfolio.models import ChangeRequest, ChangeRequestCreate, Holding, UnifiedPortfolio
+from src.modules.portfolio.models import (
+    ChangeRequest,
+    ChangeRequestCreate,
+    Holding,
+    UnifiedPortfolio,
+)
 from src.modules.portfolio.open_finance import (
     OpenFinanceIntegrationService,
     get_open_finance_service,
@@ -46,7 +51,10 @@ class PortfolioService:
         return item
 
     def list_change_requests_for_advisor(self, advisor_id: int) -> list[ChangeRequest]:
-        client_ids = {c.user.id for c in get_accounts_service().list_clients_by_advisor(advisor_id)}
+        client_ids = {
+            c.user.id
+            for c in get_accounts_service().list_clients_by_advisor(advisor_id)
+        }
         return [req for req in self._change_requests if req.client_id in client_ids]
 
 

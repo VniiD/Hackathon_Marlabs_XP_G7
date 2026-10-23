@@ -12,7 +12,7 @@ import {
   type PrioritizedClient,
   type RiskProfile,
 } from "../api";
-import { AllocationStrip, Avatar, Icon, Load, RiskTag, Severity, type Part } from "../components/ui";
+import { AllocationStrip, Avatar, Icon, Load, RiskTag, type Part } from "../components/ui";
 import {
   ASSET_COLOR,
   ASSET_LABEL,
@@ -26,7 +26,7 @@ import {
   formatPct,
   formatShare,
   formatTime,
-  useAsync,
+  usePollingAsync,
 } from "../lib";
 
 export interface ClientRow extends PrioritizedClient {
@@ -249,65 +249,98 @@ function Requests({ requests, names, onOpenClient }: { requests: ChangeRequest[]
 export function NewsList({ news, onOpenClient }: { news: NewsImpact[]; onOpenClient?: (id: number) => void }) {
   if (news.length === 0) return <p className="empty">Nenhuma notícia recente afeta estas carteiras.</p>;
   return (
-    <ul className="news">
-      {news.map((n) => (
-        <li key={n.id}>
-          <p className="news-meta">
-            <span className={`mood mood-${n.sentiment.toLowerCase()}`}>
-              <span className="mood-mark" aria-hidden="true" />
-              {SENTIMENT_LABEL[n.sentiment]}
-            </span>
-            <span className="muted">
-              {n.source}, {formatAgo(n.published_at)}
-            </span>
-          </p>
-          <h3 className="news-headline">{n.title}</h3>
-          <p className="muted news-summary">{n.summary}</p>
-          {n.url && (
-            <p className="news-link-wrap">
-              <a className="news-link" href={n.url} target="_blank" rel="noreferrer">
-                Abrir matéria
-              </a>
-            </p>
-          )}
-          {onOpenClient && (
-            <div className="affected">
-              <span className="muted small">
-                {n.affected_clients.length === 0
-                  ? "Nenhum cliente exposto"
-                  : n.affected_clients.length === 1
-                    ? "1 cliente exposto, com a fatia da carteira afetada"
-                    : `${n.affected_clients.length} clientes expostos, com a fatia da carteira afetada`}
-              </span>
-              {n.affected_clients.map((c) => (
-                <button
-                  key={c.client_id}
-                  type="button"
-                  className="chip"
-                  title={`${formatBRL(c.exposure_value)} em ${n.related_tickers.join(", ")}`}
-                  onClick={() => onOpenClient(c.client_id)}
-                >
-                  {c.client_name}
-                  <span className="chip-num">{formatShare(c.exposure_pct)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
+    <div className="news-viewport" aria-label="Notícias recentes; role para ver mais">
+      <ul className="news">
+        {news.map((item) => {
+          const related = new Map<number, { name: string; reasons: string[] }>();
+          for (const client of item.affected_clients) {
+            related.set(client.client_id, {
+              name: client.client_name,
+              reasons: [`Carteira ${formatShare(client.exposure_pct)}`],
+            });
+          }
+          for (const client of item.interested_clients) {
+            const entry = related.get(client.client_id) ?? {
+              name: client.client_name,
+              reasons: [],
+            };
+            entry.reasons.push(`Interesse: ${client.matched_interest}`);
+            related.set(client.client_id, entry);
+          }
+
+          return (
+            <li key={item.id}>
+              <p className="news-meta">
+                <span className={`mood mood-${item.sentiment.toLowerCase()}`}>
+                  <span className="mood-mark" aria-hidden="true" />
+                  {SENTIMENT_LABEL[item.sentiment]}
+                </span>
+                <span className="muted">
+                  {item.source}, {formatAgo(item.published_at)}
+                </span>
+              </p>
+              <h3 className="news-headline">
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer">
+                    {item.title}
+                  </a>
+                ) : item.title}
+              </h3>
+              <p className="muted news-summary">{item.summary}</p>
+              <div className="news-related">
+                <span className="news-related-label">
+                  {related.size ? "Vinculada a:" : "Sem vínculo com clientes"}
+                </span>
+                {related.size > 0 && (
+                  <div className="news-related-items">
+                    {[...related].map(([clientId, client]) => {
+                      const label = `${client.name} · ${client.reasons.join(" · ")}`;
+                      return onOpenClient ? (
+                        <button
+                          key={clientId}
+                          type="button"
+                          className="news-client-chip"
+                          title={label}
+                          onClick={() => onOpenClient(clientId)}
+                        >
+                          <strong>{client.name}</strong>
+                          <span>{client.reasons.join(" · ")}</span>
+                        </button>
+                      ) : (
+                        <span key={clientId} className="news-client-chip" title={label}>
+                          <strong>{client.name}</strong>
+                          <span>{client.reasons.join(" · ")}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
 interface ClientsProps {
   rows: ClientRow[];
   overview: AdvisorOverview;
+  newsSentiments: Map<number, NewsImpact["sentiment"][]>;
   onOpenClient: (id: number) => void;
 }
 
-function Clients({ rows, overview, onOpenClient }: ClientsProps) {
+function Clients({ rows, overview, newsSentiments, onOpenClient }: ClientsProps) {
   const [filter, setFilter] = useState<RiskProfile | null>(null);
   const visible = rows.filter((r) => !filter || r.client.risk_profile === filter);
+  const clientFlag = (clientId: number, score: number) => {
+    if (score >= 10) return "ATTENTION" as const;
+    const sentiments = newsSentiments.get(clientId) ?? [];
+    if (sentiments.includes("NEGATIVE")) return "NEGATIVE" as const;
+    if (sentiments.includes("POSITIVE")) return "POSITIVE" as const;
+    return "NEUTRAL" as const;
+  };
 
   return (
     <section className="panel">
@@ -347,7 +380,19 @@ function Clients({ rows, overview, onOpenClient }: ClientsProps) {
                 </strong>
                 <span className="muted">{r.next_best_action.title}</span>
               </span>
-              <Severity score={r.criticality_score} />
+              {(() => {
+                const flag = clientFlag(r.client_id, r.criticality_score);
+                const label = flag === "ATTENTION" ? "Atenção" : SENTIMENT_LABEL[flag];
+                return (
+                  <span
+                    className={`mood mood-${flag.toLowerCase()} client-flag`}
+                    aria-label={`Status do cliente: ${label}`}
+                  >
+                    <span className="mood-mark" aria-hidden="true" />
+                    {label}
+                  </span>
+                );
+              })()}
               <Icon name="chevron" size={16} />
             </button>
           </li>
@@ -366,7 +411,15 @@ async function loadDashboard(advisorId: number) {
     api.getChangeRequests(advisorId),
     api.getCurrencyLine(),
   ]);
-  return { overview, rows, news, meetings, requests, currencyLine };
+  return {
+    overview,
+    rows,
+    news,
+    meetings,
+    requests,
+    currencyLine,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 interface Props {
@@ -375,13 +428,33 @@ interface Props {
 }
 
 export function AdvisorHome({ advisor, onOpenClient }: Props) {
-  const state = useAsync(() => loadDashboard(advisor.id), [advisor.id]);
+  const state = usePollingAsync(() => loadDashboard(advisor.id), [advisor.id]);
 
   return (
     <Load state={state} label="o painel">
-      {({ overview, rows, news, meetings, requests, currencyLine }) => {
+      {({ overview, rows, news, meetings, requests, currencyLine, updatedAt }) => {
         const names = new Map(rows.map((r) => [r.client_id, r.client.user.name]));
-        const critical = rows.filter((r) => r.criticality_score >= 70).length;
+        const needsReview = rows.filter((r) => r.criticality_score >= 10).length;
+        const sentimentsByClient = new Map<number, Set<NewsImpact["sentiment"]>>();
+        for (const item of news) {
+          const relatedIds = new Set([
+            ...item.affected_clients.map((client) => client.client_id),
+            ...item.interested_clients.map((client) => client.client_id),
+          ]);
+          for (const clientId of relatedIds) {
+            const sentiments = sentimentsByClient.get(clientId) ?? new Set();
+            sentiments.add(item.sentiment);
+            sentimentsByClient.set(clientId, sentiments);
+          }
+        }
+        const newsSentiments = new Map(
+          [...sentimentsByClient].map(([clientId, sentiments]) => [
+            clientId,
+            (["NEGATIVE", "POSITIVE", "NEUTRAL"] as const).filter((sentiment) =>
+              sentiments.has(sentiment),
+            ),
+          ]),
+        );
         return (
           <>
             <header className="page-head">
@@ -389,13 +462,16 @@ export function AdvisorHome({ advisor, onOpenClient }: Props) {
                 {greeting()}, {firstName(advisor.name)}
               </h1>
               <p className="muted">
-                {critical === 0
-                  ? "Nenhum cliente em situação crítica hoje."
-                  : critical === 1
-                    ? "1 cliente precisa de contato hoje."
-                    : `${critical} clientes precisam de contato hoje.`}{" "}
+                {needsReview === 0
+                  ? "Nenhum cliente precisa de revisão prioritária hoje."
+                  : needsReview === 1
+                    ? "1 cliente requer revisão hoje."
+                    : `${needsReview} clientes requerem revisão hoje.`}{" "}
                 {meetings.length} {meetings.length === 1 ? "reunião marcada" : "reuniões marcadas"} e{" "}
                 {requests.length} {requests.length === 1 ? "pedido em aberto" : "pedidos em aberto"}.
+              </p>
+              <p className="muted small">
+                Dados consultados às {formatTime(updatedAt)}. Notícias e prioridades atualizam a cada minuto; câmbio usa referência diária e é reconsultado a cada 5 minutos.
               </p>
             </header>
 
@@ -403,13 +479,18 @@ export function AdvisorHome({ advisor, onOpenClient }: Props) {
               <div className="stack">
                 <Panorama overview={overview} />
                 <CurrencyRow rates={currencyLine} />
-                <Clients rows={rows} overview={overview} onOpenClient={onOpenClient} />
+                <Clients
+                  rows={rows}
+                  overview={overview}
+                  newsSentiments={newsSentiments}
+                  onOpenClient={onOpenClient}
+                />
               </div>
               <div className="stack">
                 <Agenda meetings={meetings} names={names} onOpenClient={onOpenClient} />
                 <Requests requests={requests} names={names} onOpenClient={onOpenClient} />
                 <section className="panel">
-                  <h2>Notícias que afetam suas carteiras</h2>
+                  <h2>Notícias ligadas a ativos e interesses</h2>
                   <NewsList news={news} onOpenClient={onOpenClient} />
                 </section>
               </div>

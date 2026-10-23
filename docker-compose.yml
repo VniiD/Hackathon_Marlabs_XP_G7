@@ -1,15 +1,39 @@
 services:
   api:
     build: .
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-    ports: ["8000:8000"]
-    env_file: .env
-    volumes: [".:/app"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/advisor
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      WHISPER_MODEL: /opt/models/faster-whisper-tiny
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports: ["127.0.0.1:${WEB_PORT:-8080}:80"]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -17,7 +41,7 @@ services:
       TZ: America/Sao_Paulo
       PGTZ: America/Sao_Paulo
     command: ["postgres", "-c", "timezone=America/Sao_Paulo"]
-    ports: ["${DB_PORT:-5432}:5432"]
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db:/docker-entrypoint-initdb.d:ro   # roda 01_schema.sql e 02_seed.sql na 1ª subida
@@ -27,10 +51,22 @@ services:
       retries: 10
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 10
+  tests:
+    build: .
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/advisor
+      REDIS_URL: redis://redis:6379/0
+      SEED_DEMO_DATA: "false"
+    command: ["python", "-m", "pytest", "tests", "-q"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
 volumes:
   pgdata:

@@ -1,23 +1,30 @@
 """Anotações pessoais do assessor sobre cada cliente (estilo post-it)."""
 
 import datetime as dt
+from typing import cast
 
 from fastapi import Depends
-from sqlalchemy import BigInteger, ForeignKey, Text, func, inspect, select
+from sqlalchemy import BigInteger, ForeignKey, Identity, Table, Text, func, inspect, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from src.core.database import Base, get_db
-from src.core.exceptions import NotFoundError
-from src.modules.accounts.models import AdvisorNote
+from src.core.exceptions import DomainError, ForbiddenError, NotFoundError
+from src.modules.accounts.models import AdvisorNote, UserRole
 from src.modules.accounts.orm import ClientProfileRecord, UserRecord
 
 
 class AdvisorNoteRecord(Base):
     __tablename__ = "advisor_notes"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    advisor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=False), primary_key=True
+    )
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client_profiles.user_id", ondelete="CASCADE"), index=True
+    )
+    advisor_id: Mapped[int] = mapped_column(
+        ForeignKey("advisor_profiles.user_id", ondelete="CASCADE")
+    )
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
@@ -58,7 +65,10 @@ def ensure_table(db: Session) -> None:
     bind = db.get_bind()
     if inspect(bind).has_table(AdvisorNoteRecord.__tablename__):
         return
-    AdvisorNoteRecord.__table__.create(bind, checkfirst=True)
+    Base.metadata.create_all(
+        bind,
+        tables=[cast(Table, AdvisorNoteRecord.__table__)],
+    )
     _seed_from_profiles(db)
 
 
@@ -67,37 +77,64 @@ class NotesService:
         self._db = db
         ensure_table(db)
 
-    def list_for_client(self, client_id: int) -> list[AdvisorNote]:
+    def _verify_access(self, client_id: int, advisor_id: int) -> None:
+        client = self._db.get(ClientProfileRecord, client_id)
+        if client is None:
+            raise NotFoundError(f"Cliente {client_id} não encontrado")
+        advisor = self._db.get(UserRecord, advisor_id)
+        if advisor is None or advisor.role != UserRole.ADVISOR.value:
+            raise ForbiddenError("Somente o assessor pode acessar estas anotações")
+        if client.advisor_id != advisor_id:
+            raise ForbiddenError("O cliente não pertence a este assessor")
+
+    def list_for_client(self, client_id: int, advisor_id: int) -> list[AdvisorNote]:
+        self._verify_access(client_id, advisor_id)
         query = (
             select(AdvisorNoteRecord)
-            .where(AdvisorNoteRecord.client_id == client_id)
+            .where(
+                AdvisorNoteRecord.client_id == client_id,
+                AdvisorNoteRecord.advisor_id == advisor_id,
+            )
             .order_by(AdvisorNoteRecord.created_at.desc(), AdvisorNoteRecord.id.desc())
         )
         return [r.to_model() for r in self._db.scalars(query)]
 
     def add(self, client_id: int, advisor_id: int, text: str) -> AdvisorNote:
-        for user_id, label in ((client_id, "Cliente"), (advisor_id, "Assessor")):
-            if self._db.get(UserRecord, user_id) is None:
-                raise NotFoundError(f"{label} {user_id} não encontrado")
-        record = AdvisorNoteRecord(client_id=client_id, advisor_id=advisor_id, text=text.strip())
+        self._verify_access(client_id, advisor_id)
+        clean_text = text.strip()
+        if not clean_text:
+            raise DomainError("A anotação não pode ficar vazia.")
+        if len(clean_text) > 500:
+            raise DomainError("A anotação deve ter no máximo 500 caracteres.")
+        record = AdvisorNoteRecord(
+            client_id=client_id, advisor_id=advisor_id, text=clean_text
+        )
         self._db.add(record)
         self._db.commit()
         return record.to_model()
 
-    def _get(self, note_id: int) -> AdvisorNoteRecord:
+    def _get(self, note_id: int, advisor_id: int) -> AdvisorNoteRecord:
         record = self._db.get(AdvisorNoteRecord, note_id)
         if record is None:
             raise NotFoundError(f"Anotação {note_id} não encontrada")
+        self._verify_access(record.client_id, advisor_id)
+        if record.advisor_id != advisor_id:
+            raise ForbiddenError("A anotação não pertence a este assessor")
         return record
 
-    def edit(self, note_id: int, text: str) -> AdvisorNote:
-        record = self._get(note_id)
-        record.text = text.strip()
+    def edit(self, note_id: int, advisor_id: int, text: str) -> AdvisorNote:
+        record = self._get(note_id, advisor_id)
+        clean_text = text.strip()
+        if not clean_text:
+            raise DomainError("A anotação não pode ficar vazia.")
+        if len(clean_text) > 500:
+            raise DomainError("A anotação deve ter no máximo 500 caracteres.")
+        record.text = clean_text
         self._db.commit()
         return record.to_model()
 
-    def delete(self, note_id: int) -> None:
-        self._db.delete(self._get(note_id))
+    def delete(self, note_id: int, advisor_id: int) -> None:
+        self._db.delete(self._get(note_id, advisor_id))
         self._db.commit()
 
 

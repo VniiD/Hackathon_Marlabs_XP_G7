@@ -18,7 +18,9 @@ def _pct(part: Decimal, total: Decimal) -> float:
 
 
 def build_overview(
-    advisor_id: int, clients: list[ClientProfile], portfolios: dict[int, UnifiedPortfolio]
+    advisor_id: int,
+    clients: list[ClientProfile],
+    portfolios: dict[int, UnifiedPortfolio],
 ) -> AdvisorOverview:
     """Consolida as carteiras de todos os clientes do assessor em uma visão única."""
     by_class: dict[AssetClass, Decimal] = defaultdict(lambda: ZERO)
@@ -54,7 +56,9 @@ def build_overview(
         external_cash=external_cash,
         by_asset_class=sorted(
             (
-                AssetClassAllocation(asset_class=c, total_value=v, share_pct=_pct(v, total))
+                AssetClassAllocation(
+                    asset_class=c, total_value=v, share_pct=_pct(v, total)
+                )
                 for c, v in by_class.items()
             ),
             key=lambda a: a.total_value,

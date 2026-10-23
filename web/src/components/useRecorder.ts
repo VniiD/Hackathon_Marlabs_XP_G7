@@ -2,6 +2,20 @@ import { useEffect, useRef, useState } from "react";
 
 const MAX_SECONDS = 180;
 
+function microphoneError(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "Microfone ausente. Conecte ou habilite um microfone e tente novamente.";
+  }
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "Acesso ao microfone negado. Permita o uso do microfone no navegador.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "Microfone não está ativo ou está sendo usado por outro aplicativo.";
+  }
+  return "Microfone indisponível. Verifique o dispositivo e a permissão do navegador.";
+}
+
 /** Grava o microfone e entrega o áudio pronto ao parar. */
 export function useRecorder(onAudio: (audio: Blob) => void) {
   const [recording, setRecording] = useState(false);
@@ -22,15 +36,26 @@ export function useRecorder(onAudio: (audio: Blob) => void) {
 
   async function start() {
     setError(null);
+    if (!supported) {
+      setError("Microfone ausente ou não suportado neste navegador. Você pode escrever a resposta.");
+      return;
+    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setError("Não foi possível acessar o microfone. Libere a permissão no navegador.");
+    } catch (cause) {
+      setError(microphoneError(cause));
       return;
     }
     const chunks: Blob[] = [];
-    const rec = new MediaRecorder(stream);
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream);
+    } catch (cause) {
+      stream.getTracks().forEach((track) => track.stop());
+      setError(microphoneError(cause));
+      return;
+    }
     rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
@@ -52,5 +77,14 @@ export function useRecorder(onAudio: (audio: Blob) => void) {
   // Sair da tela no meio da gravação solta o microfone.
   useEffect(() => stop, []);
 
-  return { supported, recording, seconds, error, start, stop, maxSeconds: MAX_SECONDS };
+  return {
+    supported,
+    unavailableMessage: "Microfone ausente ou não suportado. Escreva sua mensagem.",
+    recording,
+    seconds,
+    error,
+    start,
+    stop,
+    maxSeconds: MAX_SECONDS,
+  };
 }

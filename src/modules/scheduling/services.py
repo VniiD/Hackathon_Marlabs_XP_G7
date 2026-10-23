@@ -1,11 +1,14 @@
 from datetime import datetime, time, timedelta
-from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.core.exceptions import ConflictError, DomainError, ForbiddenError, NotFoundError
+from src.core.exceptions import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    NotFoundError,
+)
 from src.modules.scheduling.models import (
     Meeting,
-    MeetingConfirm,
     MeetingParty,
     MeetingRequest,
     MeetingStatus,
@@ -23,13 +26,19 @@ class SchedulingService:
         self._meetings: list[Meeting] = []
 
     def list_meetings_for_advisor(self, advisor_id: int) -> list[Meeting]:
-        return sorted((m for m in self._meetings if m.advisor_id == advisor_id), key=lambda m: m.slot.start)
+        return sorted(
+            (m for m in self._meetings if m.advisor_id == advisor_id),
+            key=lambda m: m.slot.start,
+        )
 
     def list_for_advisor(self, advisor_id: int) -> list[Meeting]:
         return self.list_meetings_for_advisor(advisor_id)
 
     def list_meetings_for_client(self, client_id: int) -> list[Meeting]:
-        return sorted((m for m in self._meetings if m.client_id == client_id), key=lambda m: m.slot.start)
+        return sorted(
+            (m for m in self._meetings if m.client_id == client_id),
+            key=lambda m: m.slot.start,
+        )
 
     def list_for_client(self, client_id: int) -> list[Meeting]:
         return self.list_meetings_for_client(client_id)
@@ -48,7 +57,9 @@ class SchedulingService:
                 return True
         return False
 
-    def find_free_slots(self, advisor_id: int, limit: int = 6, now: datetime | None = None) -> list[TimeSlot]:
+    def find_free_slots(
+        self, advisor_id: int, limit: int = 6, now: datetime | None = None
+    ) -> list[TimeSlot]:
         anchor = (now or datetime.now(LOCAL_TZ)).astimezone(LOCAL_TZ)
         slots: list[TimeSlot] = []
         days_checked = 0
@@ -64,7 +75,10 @@ class SchedulingService:
                     current = datetime.combine(candidate_day, window_start)
                     stop = datetime.combine(candidate_day, window_end)
                     while current + timedelta(minutes=_SLOT_MINUTES) <= stop:
-                        slot = TimeSlot(start=current, end=current + timedelta(minutes=_SLOT_MINUTES))
+                        slot = TimeSlot(
+                            start=current,
+                            end=current + timedelta(minutes=_SLOT_MINUTES),
+                        )
                         if candidate_day == anchor.date() and slot.start < anchor:
                             current += timedelta(minutes=_SLOT_MINUTES)
                             continue
@@ -77,7 +91,9 @@ class SchedulingService:
         return slots
 
     def schedule(self, req: MeetingRequest) -> Meeting:
-        slot = req.preferred or next(iter(self.find_free_slots(req.advisor_id, limit=1)), None)
+        slot = req.preferred or next(
+            iter(self.find_free_slots(req.advisor_id, limit=1)), None
+        )
         if slot is None:
             raise DomainError("Sem horários livres")
         if self._has_overlap(req.advisor_id, slot):
@@ -100,8 +116,16 @@ class SchedulingService:
         if meeting.status == MeetingStatus.CONFIRMED:
             raise ConflictError("Reunião já confirmada")
 
-        expected_party = MeetingParty.CLIENT if meeting.initiated_by == MeetingParty.ADVISOR else MeetingParty.ADVISOR
-        expected_user_id = meeting.client_id if expected_party == MeetingParty.CLIENT else meeting.advisor_id
+        expected_party = (
+            MeetingParty.CLIENT
+            if meeting.initiated_by == MeetingParty.ADVISOR
+            else MeetingParty.ADVISOR
+        )
+        expected_user_id = (
+            meeting.client_id
+            if expected_party == MeetingParty.CLIENT
+            else meeting.advisor_id
+        )
 
         if role != expected_party or user_id != expected_user_id:
             raise ForbiddenError("A confirmação deve ser feita pela parte contrária")

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, type ToolCall } from "../api";
 import { errorText, firstName } from "../lib";
+import { useRecorder } from "./useRecorder";
 import { Icon } from "./ui";
 
 interface Message {
@@ -21,7 +22,26 @@ export function CopilotChat({ clientId, clientName }: { clientId: number; client
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const recorder = useRecorder(async (audio) => {
+    setTranscribing(true);
+    setVoiceError(null);
+    try {
+      const { text } = await api.transcribe(audio);
+      if (!text.trim()) {
+        setVoiceError("Não foi possível reconhecer a fala. Tente novamente ou digite a mensagem.");
+      } else {
+        setDraft((current) => (current.trim() ? `${current.trim()} ${text.trim()}` : text.trim()));
+      }
+    } catch (error) {
+      setVoiceError(errorText(error));
+    } finally {
+      setTranscribing(false);
+    }
+  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
@@ -106,16 +126,44 @@ export function CopilotChat({ clientId, clientName }: { clientId: number; client
           send(draft.trim());
         }}
       >
+        {recorder.supported && (
+          <button
+            type="button"
+            className="btn btn-quiet"
+            aria-label={recorder.recording ? "Parar gravação" : "Gravar mensagem"}
+            title={recorder.recording ? "Parar gravação" : "Gravar mensagem"}
+            disabled={busy || transcribing}
+            onClick={recorder.recording ? recorder.stop : recorder.start}
+          >
+            <Icon name={recorder.recording ? "stop" : "mic"} />
+          </button>
+        )}
         <input
           aria-label="Mensagem para o copiloto"
           placeholder="Escreva uma mensagem"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <button className="btn btn-primary" type="submit" disabled={busy || !draft.trim()}>
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={busy || transcribing || !draft.trim()}
+        >
           <Icon name="send" /> Enviar
         </button>
       </form>
+      {(recorder.recording || transcribing || recorder.error || voiceError) && (
+        <p className={recorder.error || voiceError ? "state-error small" : "muted small"} role="status">
+          {recorder.recording && `Gravando ${recorder.seconds}s`}
+          {transcribing && "Transcrevendo áudio…"}
+          {recorder.error || voiceError}
+        </p>
+      )}
+      {!recorder.supported && (
+        <p className="muted small" role="status">
+          {recorder.unavailableMessage}
+        </p>
+      )}
     </section>
   );
 }

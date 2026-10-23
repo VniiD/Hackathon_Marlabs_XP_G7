@@ -15,8 +15,12 @@ class AdvisorAvailabilityRecord(Base):
     __tablename__ = "advisor_availability"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    advisor_id: Mapped[int] = mapped_column(ForeignKey("advisor_profiles.user_id", ondelete="CASCADE"))
-    weekday: Mapped[int] = mapped_column(SmallInteger)  # ISO: 1 = segunda ... 7 = domingo
+    advisor_id: Mapped[int] = mapped_column(
+        ForeignKey("advisor_profiles.user_id", ondelete="CASCADE")
+    )
+    weekday: Mapped[int] = mapped_column(
+        SmallInteger
+    )  # ISO: 1 = segunda ... 7 = domingo
     start_time: Mapped[dt.time]
     end_time: Mapped[dt.time]
 
@@ -26,13 +30,21 @@ class MeetingRecord(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     advisor_id: Mapped[int] = mapped_column(ForeignKey("advisor_profiles.user_id"))
-    client_id: Mapped[int] = mapped_column(ForeignKey("client_profiles.user_id", ondelete="CASCADE"))
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client_profiles.user_id", ondelete="CASCADE")
+    )
     starts_at: Mapped[dt.datetime]
     ends_at: Mapped[dt.datetime]
     topic: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(Text, default="PENDING")  # PENDING | CONFIRMED | CANCELLED | DONE
-    created_via: Mapped[str] = mapped_column(Text, default="APP")  # APP | CHAT | ADVISOR
-    initiated_by: Mapped[str] = mapped_column(Text, default="CLIENT")  # CLIENT | ADVISOR
+    status: Mapped[str] = mapped_column(
+        Text, default="PENDING"
+    )  # PENDING | CONFIRMED | CANCELLED | DONE
+    created_via: Mapped[str] = mapped_column(
+        Text, default="APP"
+    )  # APP | CHAT | ADVISOR
+    initiated_by: Mapped[str] = mapped_column(
+        Text, default="CLIENT"
+    )  # CLIENT | ADVISOR
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
     def to_model(self) -> Meeting:

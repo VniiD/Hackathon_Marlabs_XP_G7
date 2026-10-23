@@ -19,8 +19,12 @@ class NotificationRecord(Base):
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))  # destinatário
-    kind: Mapped[str] = mapped_column(Text)  # PORTFOLIO_REQUEST | MEETING | MARKET_ALERT ...
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )  # destinatário
+    kind: Mapped[str] = mapped_column(
+        Text
+    )  # PORTFOLIO_REQUEST | MEETING | MARKET_ALERT ...
     title: Mapped[str] = mapped_column(Text)
     body: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
@@ -49,7 +53,10 @@ def load_client_signals(
         triggers: list[TriggerType] = []
         if r["days_to_birthday"] == 0:
             triggers.append(TriggerType.BIRTHDAY)
-        if r["days_to_family_date"] is not None and r["days_to_family_date"] <= FAMILY_DATE_WINDOW_DAYS:
+        if (
+            r["days_to_family_date"] is not None
+            and r["days_to_family_date"] <= FAMILY_DATE_WINDOW_DAYS
+        ):
             triggers.append(TriggerType.FAMILY_DATE)
         if r["days_since_last_contact"] >= INACTIVITY_DAYS:
             triggers.append(TriggerType.INACTIVITY)

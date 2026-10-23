@@ -194,7 +194,7 @@ function AnswerForm({ clientId, question, saved, onSaved, onNext }: AnswerFormPr
           </div>
 
           {!recorder.supported && (
-            <p className="muted small">Este navegador não grava áudio. Escreva a resposta.</p>
+            <p className="muted small" role="status">{recorder.unavailableMessage}</p>
           )}
           {recorder.error && (
             <p className="state-error" role="alert">

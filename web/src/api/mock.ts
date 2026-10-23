@@ -232,7 +232,7 @@ const changeRequests: ChangeRequest[] = [
 
 const suitability = new Map<number, Suitability>();
 
-const news: Omit<NewsImpact, "affected_clients">[] = [
+const news: Omit<NewsImpact, "affected_clients" | "interested_clients">[] = [
   {
     id: 1,
     source: "InfoMoney",
@@ -274,6 +274,17 @@ const news: Omit<NewsImpact, "affected_clients">[] = [
     sentiment: "NEUTRAL",
   },
 ];
+
+const teamAliases: Record<string, string[]> = {
+  corinthians: ["corinthians", "timao", "sccp"],
+  palmeiras: ["palmeiras", "verdao"],
+  flamengo: ["flamengo", "mengao"],
+  gremio: ["gremio", "imortal tricolor"],
+  santos: ["santos", "peixe"],
+};
+
+const normalizeText = (text: string) =>
+  text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 const sum = (values: string[]) => values.reduce((acc, v) => acc + Number(v), 0);
 
@@ -445,6 +456,29 @@ export const mockApi: Api = {
           })
           .filter((a) => Number(a.exposure_value) > 0)
           .sort((a, b) => b.exposure_pct - a.exposure_pct),
+        interested_clients: mine.flatMap((client) => {
+          const personalInterests = [
+            ...(client.context.favorite_team
+              ? [[client.context.favorite_team, "favorite_team"] as const]
+              : []),
+            ...client.context.hobbies.map((hobby) => [hobby, "hobby"] as const),
+          ];
+          const article = normalizeText(`${n.title} ${n.summary}`);
+          return personalInterests
+            .filter(([interest, type]) => {
+              const aliases = type === "favorite_team"
+                ? teamAliases[normalizeText(interest)] ?? [interest]
+                : [interest];
+              return aliases.some((alias) => article.includes(normalizeText(alias)));
+            })
+            .map(([interest, interest_type]) => ({
+              client_id: client.user.id,
+              client_name: client.user.name,
+              matched_interest: interest,
+              interest_type,
+              sentiment: n.sentiment,
+            }));
+        }),
       })),
     );
   },
@@ -621,8 +655,12 @@ export const mockApi: Api = {
     const meeting = meetings.find((m) => m.id === meetingId && m.advisor_id === advisorId);
     if (!meeting) throw new Error(`Briefing da reunião ${meetingId} não encontrado`);
     return delay({
+      client_name: clients.find((client) => client.user.id === meeting.client_id)?.user.name ?? "Cliente",
       meeting,
       context: meeting.context ?? null,
+      follow_up: meeting.context?.summary
+        ? `Retornar ao cliente com um resumo do assunto: ${meeting.topic}.`
+        : "",
       portfolio: {
         total_net_worth: "0.00",
         allocation: [],
@@ -632,13 +670,13 @@ export const mockApi: Api = {
     });
   },
 
-  getNotes: (clientId) =>
+  getNotes: (clientId, advisorId) =>
     delay(
       [
         {
           id: 1,
           client_id: clientId,
-          advisor_id: ADVISOR_ID,
+          advisor_id: advisorId,
           text: "Cliente gosta de conversar sobre risco e patrimônio em cenários de baixa.",
           created_at: new Date().toISOString(),
         },
@@ -655,16 +693,16 @@ export const mockApi: Api = {
       created_at: new Date().toISOString(),
     }),
 
-  editNote: (noteId, text) =>
+  editNote: (noteId, advisorId, text) =>
     delay({
       id: noteId,
       client_id: 0,
-      advisor_id: ADVISOR_ID,
+      advisor_id: advisorId,
       text,
       created_at: new Date().toISOString(),
     }),
 
-  deleteNote: async () => undefined,
+  deleteNote: async (_noteId, _advisorId) => undefined,
 
   scheduleMeeting: (req) => {
     const start = new Date(Date.now() + 24 * 60 * 60 * 1000);

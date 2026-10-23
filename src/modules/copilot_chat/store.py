@@ -1,4 +1,5 @@
 """Memória da conversa e do contexto coletado, em memória até o chat usar a tabela chat_messages."""
+
 import threading
 
 from src.modules.copilot_chat.models import ChatHistoryItem

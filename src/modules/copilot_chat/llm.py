@@ -1,4 +1,5 @@
 """Cliente de LLM do copiloto. A interface existe para os testes injetarem um fake."""
+
 import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -25,7 +26,9 @@ class LLMMessage:
 
 
 class LLMClient(Protocol):
-    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMMessage: ...
+    def chat(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> LLMMessage: ...
 
 
 class OpenAIClient:
@@ -35,7 +38,9 @@ class OpenAIClient:
         self._api_key = settings.openai_api_key
         self._model = settings.openai_model
 
-    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMMessage:
+    def chat(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> LLMMessage:
         if not self._api_key:
             raise ExternalServiceError("Chat não configurado: defina OPENAI_API_KEY")
         client = openai.OpenAI(api_key=self._api_key, timeout=REQUEST_TIMEOUT_SECONDS)
@@ -49,7 +54,11 @@ class OpenAIClient:
             raise ExternalServiceError("A OpenAI não respondeu") from exc
         message = completion.choices[0].message
         calls = [
-            LLMToolCall(id=c.id, name=c.function.name, arguments=_parse_arguments(c.function.arguments))
+            LLMToolCall(
+                id=c.id,
+                name=c.function.name,
+                arguments=_parse_arguments(c.function.arguments),
+            )
             for c in (message.tool_calls or [])
             if c.type == "function"
         ]

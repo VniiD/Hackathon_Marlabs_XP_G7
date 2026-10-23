@@ -4,7 +4,15 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, FetchedValue, ForeignKey, ForeignKeyConstraint, Numeric, Text, func
+from sqlalchemy import (
+    BigInteger,
+    FetchedValue,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Numeric,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,11 +27,17 @@ class OpenFinanceConsentRecord(Base):
     __tablename__ = "open_finance_consents"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client_profiles.user_id", ondelete="CASCADE"))
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client_profiles.user_id", ondelete="CASCADE")
+    )
     institution: Mapped[str] = mapped_column(Text)
     external_consent_id: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(Text, default="PENDING")  # PENDING | ACTIVE | REVOKED | EXPIRED
-    permissions: Mapped[list[str]] = mapped_column(MutableList.as_mutable(ARRAY(Text)), default=list)
+    status: Mapped[str] = mapped_column(
+        Text, default="PENDING"
+    )  # PENDING | ACTIVE | REVOKED | EXPIRED
+    permissions: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(ARRAY(Text)), default=list
+    )
     granted_at: Mapped[dt.datetime | None]
     expires_at: Mapped[dt.datetime | None]
     revoked_at: Mapped[dt.datetime | None]
@@ -79,7 +93,9 @@ class HoldingRecord(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client_profiles.user_id", ondelete="CASCADE"))
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client_profiles.user_id", ondelete="CASCADE")
+    )
     external_account_id: Mapped[int | None] = mapped_column(BigInteger)
     ticker: Mapped[str] = mapped_column(Text)
     asset_class: Mapped[str] = mapped_column(Text)  # AssetClass
@@ -115,10 +131,16 @@ class PortfolioRequestRecord(Base):
     __tablename__ = "portfolio_requests"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client_profiles.user_id", ondelete="CASCADE"))
-    request_type: Mapped[str] = mapped_column(Text)  # APORTE | RESGATE | REBALANCEAMENTO | COMPRA | VENDA | OUTRO
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client_profiles.user_id", ondelete="CASCADE")
+    )
+    request_type: Mapped[str] = mapped_column(
+        Text
+    )  # APORTE | RESGATE | REBALANCEAMENTO | COMPRA | VENDA | OUTRO
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    status: Mapped[str] = mapped_column(Text, default="PENDING")  # PENDING | IN_PROGRESS | DONE | REJECTED
+    status: Mapped[str] = mapped_column(
+        Text, default="PENDING"
+    )  # PENDING | IN_PROGRESS | DONE | REJECTED
     source: Mapped[str] = mapped_column(Text, default="APP")  # APP | CHAT
     chat_message_id: Mapped[int | None] = mapped_column(
         ForeignKey("chat_messages.id", ondelete="SET NULL")

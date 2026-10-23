@@ -1,188 +1,156 @@
-# Hackathon XP G7 — Plataforma Inteligente para Assessores Financeiros
+# Plataforma XP G7
 
-Monolito modular em Python (FastAPI) com PostgreSQL, Redis e OpenAI (chat do copiloto).
+MVP web para assessores financeiros e clientes. A interface React consome uma API FastAPI organizada por módulos; o ambiente Docker reúne frontend, API, PostgreSQL e Redis.
 
-## Visão geral
+## Executar com Docker
 
-Plataforma web para assessores financeiros e clientes da XP: consolida carteiras, prioriza atendimentos por criticidade,
-analisa perfil de risco, traz inteligência de mercado, copiloto com IA (chat e voz) e agendamento de reuniões.
-
-Projeto do **Hackathon Marlabs × XP Inc. (Grupo 7)**, reconhecido como **destaque de inovação do evento**, principalmente
-pela **transcrição e cadastro por voz** (AssemblyAI), pensados como futuro substituto do chat convencional no cadastro.
-
-Mais contexto: [`PITCH.md`](./PITCH.md) (problema, solução e demo) e [`documentacao-projeto.html`](./documentacao-projeto.html).
-
-## Estrutura
-
-```
-src/
-  main.py                      # app FastAPI + routers (/api/v1)
-  core/                        # config, banco, Redis, exceções
-  modules/
-    accounts/                  # usuários, perfis de risco, contexto pessoal
-    portfolio/                 # carteira + OpenFinanceIntegrationService
-    market_intelligence/       # cotações (Redis pub/sub), notícias, sentimento
-    copilot_chat/              # OpenAI (Chat Completions) + Function Calling
-    advisor_dashboard/         # DailyAdvisorEngine, Next Best Action
-    scheduling/                # agenda e marcação de reuniões
-```
-
-Cada módulo expõe `router.py` (HTTP), `models.py` (Pydantic) e `services.py` (regras, injetadas via `Depends`).
-Módulos conversam entre si apenas pelos `services`, nunca pelos internos.
-
-## Rodando com Docker Compose
+Requer Docker Engine e Docker Compose. Na primeira execução, o build baixa dependências, compila a interface e inclui o modelo `faster-whisper tiny` na imagem da API.
 
 ```bash
-cp .env.example .env        # preencha OPENAI_API_KEY
-docker compose up --build
+docker compose up --build -d
 ```
 
-- API: http://localhost:8000 (docs em `/docs`)
-- PostgreSQL: `localhost:5432` | Redis: `localhost:6379`
+- Interface: http://localhost:8080
+- API e OpenAPI: http://localhost:8000/docs
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
 
-## Rodando localmente (API fora do Docker)
+As portas publicadas são limitadas a `localhost` e podem ser alteradas em `.env`; consulte [.env.example](.env.example). O banco recebe `db/01_schema.sql` e `db/02_seed.sql` na primeira inicialização do volume. Não apague o volume para aplicar alterações de schema em uma instalação existente; use os scripts de banco conscientemente.
+
+Para habilitar as respostas do copiloto, configure `OPENAI_API_KEY` no `.env`. Sem essa chave, o restante do stack sobe, incluindo a transcrição local; chamadas de chat que dependem do LLM não conseguem responder.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+docker compose logs -f
+docker compose down                         # mantém os dados do PostgreSQL
+docker compose --profile test run --rm tests # executa a suíte no container
+```
+
+## Desenvolvimento local
+
+Backend, com PostgreSQL e Redis já disponíveis:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-docker compose up -d db redis
-uvicorn src.main:app --reload
-pytest
+uvicorn src.main:app --reload --port 8000
 ```
 
-Fora do Docker, ajuste `DATABASE_URL`/`REDIS_URL` no `.env` para `localhost`.
-
-## Interface web (`web/`)
-
-React + Vite + TypeScript. Por padrão usa dados simulados, então roda sem o backend:
+Frontend:
 
 ```bash
 cd web
-npm install
-npm run dev                 # http://localhost:5173
+npm ci
+npm run dev
 ```
 
-Para usar o FastAPI no lugar dos mocks, suba o backend na porta 8000 e crie `web/.env` com:
+O frontend usa a API real por padrão. Para substituir os dados da interface pelos mocks, defina `VITE_USE_MOCKS=true` em `web/.env`. O endpoint de desenvolvimento do Vite encaminha `/api` para o FastAPI.
 
-```
-VITE_USE_MOCKS=false
-```
+### PostgreSQL local sem Docker no Linux x86_64
 
-O Vite encaminha `/api` para `http://localhost:8000`, então não é preciso configurar CORS em dev.
-
-`VITE_USE_MOCKS` tem três modos:
-
-| Valor | O que usa |
-|---|---|
-| `true` (padrão) | tudo simulado, sem backend |
-| `partial` | **agenda, chat e briefing do assessor** vão ao FastAPI (o chat usa a OpenAI e exige `OPENAI_API_KEY`); o resto segue simulado |
-| `false` | tudo no FastAPI (várias telas ainda não têm rota, veja abaixo) |
-
-No modo `partial` a API sobe com carteiras e três reuniões de demonstração para os clientes do Postgres
-(`src/seed.py`, desligue com `SEED_DEMO_DATA=false`); ela guarda tudo em memória e reiniciar o container zera;
-o horário pedido por um lado só vale depois que o outro confirma, e conflito de horário volta 409.
-
-A entrada é uma tela "Quem está acessando?" com perfis prontos: escolha a assessora para ver o painel
-do assessor, ou um cliente para ver a carteira. A cliente marcada como "Primeiro acesso" passa antes
-pela análise de perfil. Recarregar a página volta os dados simulados ao estado inicial.
-
-A UI só fala com o backend pela interface `Api` em `web/src/api/types.ts`, que tem duas
-implementações: `mock.ts` (dados simulados) e `http.ts` (chamadas aos endpoints de `/api/v1`).
-Os tipos desse arquivo espelham os `models.py` de cada módulo; ao mudar um modelo Pydantic, atualize o tipo.
-As rotas marcadas como "pendente" em `http.ts` (perfis, notícias, pedidos e análise de perfil)
-ainda não existem no FastAPI, então por enquanto essas telas só funcionam com os mocks.
-
-Usuários, análise de perfil e anotações do assessor são a exceção: mesmo com os mocks ligados eles vêm do backend.
-
-- **Usuários**: a tela de entrada lista os usuários do Postgres (`GET /api/v1/accounts/profiles`) e
-  "Criar conta" grava um cliente novo (`POST /api/v1/accounts/signup`). O navegador lembra quem entrou
-  e em qual tela estava, então o F5 não desloga. Sem backend, a entrada cai nos usuários simulados.
-- **Análise de perfil**: as respostas ficam em `suitability_answers` (tabela criada pela API no
-  primeiro uso) e o perfil calculado atualiza `client_profiles.risk_profile`.
-- **Anotações do assessor**: ficam em `advisor_notes` (tabela criada pela API no primeiro uso, já
-  com o antigo contexto fixo de hobbies, time e datas convertido em anotações).
-- **Áudio**: transcrito pela AssemblyAI (`POST /api/v1/copilot/transcribe`); defina
-  `ASSEMBLYAI_API_KEY` no `.env` da raiz. Sem a chave, o cliente ainda pode escrever.
-
-Carteira, prioridades, notícias e pedidos continuam simulados e voltam ao estado inicial no F5.
-
-O banco precisa do schema e do seed de `db/`. Em um volume novo o `docker compose up` aplica os dois
-sozinho. Se o seu volume `pgdata` é antigo (sem a tabela `users`), aplique à mão:
+O script abaixo usa Node 22 e PostgreSQL empacotado no diretório do usuário; não instala pacotes de sistema:
 
 ```bash
-docker compose exec -T db psql -U postgres -d advisor < db/01_schema.sql
-docker compose exec -T db psql -U postgres -d advisor < db/02_seed.sql
+npm install --prefix ~/.local/embedded-postgres embedded-postgres@17.10.0-beta.17
+node scripts/local-postgres.mjs start
 ```
 
-Se a porta 5432 já estiver em uso na sua máquina, defina `DB_PORT` no `.env` (ex.: `DB_PORT=5434`).
+Mantenha o processo ativo enquanto roda a API/testes. Para parar: `node scripts/local-postgres.mjs stop`. Os dados persistem em `~/.local/share/hackathon-xp-postgres`.
 
-Decisões de interface estão em `web/DESIGN.md`.
+## Checagens
 
-## Agenda e confirmação de reuniões
+Com o ambiente virtual configurado e PostgreSQL disponível:
 
-Assessor e cliente têm a aba **Agenda** (e o painel/carteira mostram o mesmo componente). Toda reunião
-nasce `PENDING` com o campo `initiated_by` (`CLIENT` ou `ADVISOR`) e só vira `CONFIRMED` quando a
-**outra** parte confirma; quem pediu vê "Aguardando <nome>", sem botão.
+```bash
+.venv/bin/python -m pytest tests
+.venv/bin/mypy src tests
+.venv/bin/ruff check src tests
+.venv/bin/ruff format --check src tests
+.venv/bin/flake8 src tests
+```
 
-Rotas em `/api/v1/scheduling`:
+O Flake8 usa [.flake8](.flake8): largura 88, igual ao Ruff. E501 é ignorado porque há textos de prompt, mensagens e conteúdo de demonstração que não devem ser partidos automaticamente; Ruff continua verificando e formatando o código. A dependência de Flake8, Ruff e mypy está em `requirements.txt`.
 
-| Rota | O que faz |
-|---|---|
-| `GET /advisors/{id}/meetings` · `GET /clients/{id}/meetings` | agenda de cada lado, em ordem de horário |
-| `GET /advisors/{id}/free-slots?limit=6` | horários livres: janelas de atendimento (seg-sex, 9h-12h e 14h-18h) menos as reuniões |
-| `POST /meetings` | pede reunião (`initiated_by`); 409 se o assessor já tem reunião nesse horário |
-| `POST /meetings/{id}/confirm` | corpo `{user_id, role}`; 403 se for quem pediu ou um terceiro, 409 se não estiver pendente |
+## Arquitetura
 
-Ainda não há login, então quem confirma vem no corpo da requisição (o `role` evita confundir ids iguais
-de assessor e cliente). Com autenticação, trocar por usuário do token. Testes: `pytest tests/test_scheduling.py`.
+- `src/main.py` registra os routers sob `/api/v1`; `src/core/` contém configuração, SQLAlchemy, Redis e tratamento de erros.
+- `accounts`: usuários/perfis, contexto pessoal e anotações privadas do assessor. As notas têm CRUD persistido em PostgreSQL e cada operação confere se o cliente está vinculado ao assessor informado. Parte da análise de suitability continua em memória; o módulo `suitability.py` não está conectado às rotas atuais.
+- `portfolio`: carteiras consolidadas pela abstração local de Open Finance. A integração bancária real ainda é stub; holdings de demonstração são carregadas em memória por `src/seed.py`.
+- `market_intelligence`: RSS, classificação lexical de sentimento, cotação de fallback e linha de câmbio externa.
+- `copilot_chat`: OpenAI Chat Completions e function calling; o LLM é opcional na inicialização, mas necessário para respostas do copiloto.
+- `advisor_dashboard`: prioridade por perfil, notícia associada à exposição, variação BRL e ajuste limitado do LLM; score total limitado a 100. O engine também aceita queda de carteira, gatilhos e inatividade, mas o agregador diário atual não popula esses três sinais, que permanecem zerados.
+- `scheduling`: disponibilidade e reuniões em memória, com conflito e confirmação entre as partes.
+- `web/`: React 18, TypeScript e Vite; cliente HTTP e mocks estão em `web/src/api/`.
 
-## Chat com o copiloto e contexto da reunião
+### Criticidade
 
-`POST /api/v1/copilot/chat` conversa com a OpenAI (`OPENAI_MODEL`, padrão `gpt-4o-mini`) usando function
-calling. O histórico fica no servidor por cliente (`GET /copilot/chat/{client_id}/history`). Ferramentas:
-`get_portfolio_summary`, `get_relevant_news`, `get_free_slots`, `save_meeting_context` e `schedule_meeting`.
+O cálculo determinístico agrega notícias, exposição cambial estimada e, quando configurado, até 10 pontos de ajuste do LLM. Notícias financeiras negativas ligadas a ativos somam 1 ponto por ponto percentual de exposição, ajustado pelo perfil de risco e limitado a 40. Notícias negativas ligadas a time favorito ou hobby somam 10 pontos por matéria, limitados a 20. Sentimentos positivos e neutros não aumentam urgência. A variação de BRL usa a proporção em ações e cripto como proxy de sensibilidade, não como exposição cambial medida. O score total é limitado a 100 e ordena a fila do assessor. O engine aceita ainda sinais de queda diária, gatilhos de relacionamento e inatividade, mas o agregador atual não os fornece. Isso é priorização para revisão humana, não recomendação de investimento.
 
-**Reunião só sai com contexto.** `schedule_meeting` recusa (`missing_context`) até o cliente responder, no
-chat, a quatro perguntas (assunto, expectativa, prazo e mudanças recentes). A regra é do servidor, não só do
-prompt. Ao marcar, as respostas viram `Meeting.context` e o cliente não consegue marcar pela tela de
-carteira: o botão leva ao chat. Sem `OPENAI_API_KEY` o chat responde 502.
+Na lista de clientes, cada pessoa mostra uma única flag à direita: **Atenção** para score a partir de 10; abaixo desse valor, prevalece o sentimento de notícia relacionada nesta ordem: **Negativa**, **Positiva**, **Neutra**. O vínculo pode ser por exposição na carteira ou por interesse pessoal e não mistura relacionamento com exposição financeira.
 
-**O que o assessor vê.** `GET /api/v1/advisor/{advisor_id}/meetings/{meeting_id}/briefing` junta o contexto
-do chat, a carteira (total, alocação, maiores posições), as notícias que citam ativos do cliente
-(`GET /market/news`, hoje dados de demonstração) e pontos de conversa gerados pelo LLM, com um fallback por
-regras se a OpenAI falhar. Aparece como "Preparação da reunião" no detalhe do cliente. Testes:
-`pytest tests/test_copilot_chat.py` (o LLM é um fake; nenhum teste chama a OpenAI).
+```mermaid
+flowchart LR
+	RSS["RSS: InfoMoney · ge.globo<br/>Valor Econômico · Money Times"] --> SENT["Notícia<br/>sentimento lexical"]
+	SENT --> MATCH["Correspondência por cliente"]
+	HOLD["Ativos e exposição<br/>da carteira"] --> MATCH
+	PROFILE["Time favorito<br/>e hobbies"] --> MATCH
+	MATCH --> FIN["Notícia financeira negativa<br/>exposição × perfil<br/>máximo 40"]
+	MATCH --> PERSONAL["Notícia pessoal negativa<br/>10 por matéria · máximo 20"]
+	FIN --> SCORE["Score determinístico<br/>+ câmbio + LLM opcional"]
+	PERSONAL --> SCORE
+	SCORE --> ORDER["Fila ordenada<br/>maior score primeiro"]
+	ORDER --> FLAG{"Score ≥ 10?"}
+	FLAG -->|Sim| ATT["Atenção"]
+	FLAG -->|Não| MOOD["Negativa, senão Positiva,<br/>senão Neutra"]
+```
 
-## Estado atual
+Na caixa de notícias do assessor, quatro matérias ficam visíveis por vez. Cada matéria mostra sentimento, fonte, horário, manchete e clientes vinculados, com o motivo da relação; a lista pode ser rolada para ver as demais.
 
-MVP de hackathon: os fluxos principais funcionam de ponta a ponta; algumas integrações ainda usam dados de demonstração.
+### Anotações do assessor
 
-**Funcionando**
+A aba **Contexto pessoal** fica disponível na tela do assessor e permite listar, criar, editar e apagar notas de até 500 caracteres. O banco guarda as notas em `advisor_notes`; quando a tabela é criada pela primeira vez, hobbies, time favorito e datas familiares existentes são convertidos em notas iniciais. A API valida o vínculo entre cliente e assessor em cada operação.
 
-- **Agenda** (`scheduling`): horários livres, conflito de horário (409) e confirmação das duas partes, com testes. Os dados ficam em memória (reiniciar o container zera).
-- **Copiloto** (`copilot_chat`): chat com OpenAI e function calling; só agenda reunião depois de coletar o contexto do cliente (regra validada no servidor). Testes com LLM fake.
-- **Voz**: transcrição pela AssemblyAI (`POST /api/v1/copilot/transcribe`), usada na análise de perfil e no cadastro por voz.
-- **Contas** (`accounts`): usuários, criação de conta, análise de perfil (suitability) e anotações do assessor gravados no PostgreSQL.
-- **Painel do assessor**: briefing de preparação da reunião (contexto do chat, carteira, notícias dos ativos do cliente e pontos de conversa).
-- **Interface web** (`web/`): React + TypeScript, rodando com dados simulados ou com a API.
+```mermaid
+flowchart LR
+	UI["Tela do assessor<br/>Contexto pessoal"] --> API["FastAPI · accounts"]
+	API --> CHECK["Valida cliente e assessor<br/>e escopo da nota"]
+	CHECK -->|Vínculo válido| CRUD["Listar · criar<br/>editar · apagar"]
+	CRUD --> DB[("PostgreSQL<br/>advisor_notes")]
+	DB --> CRUD
+	CRUD --> UI
+	CHECK -->|Sem vínculo| DENY["403 Forbidden"]
+	LIMIT["Sem autenticação de identidade"] -. "não comprova quem chamou" .-> API
+```
 
-**Simulado / em aberto**
+Rotas de anotação:
 
-- **Open Finance** (`portfolio`): integração ainda em stub; a carteira exibida é simulada.
-- **Cotações (Redis) e notícias** (`market_intelligence`): dados de demonstração; coleta automática e sentimento ainda não implementados.
-- **Migrações**: `alembic init` pendente (pasta `alembic/` reservada); o schema vem de `db/01_schema.sql` e `db/02_seed.sql`.
+- `GET /api/v1/accounts/advisors/{advisor_id}/clients/{client_id}/notes`
+- `POST /api/v1/accounts/advisors/{advisor_id}/clients/{client_id}/notes`
+- `PATCH /api/v1/accounts/advisors/{advisor_id}/notes/{note_id}`
+- `DELETE /api/v1/accounts/advisors/{advisor_id}/notes/{note_id}`
 
-**Próximos passos**
+**Privacidade:** a interface mostra o recurso somente na tela do assessor e o backend verifica o vínculo com o cliente, mas o MVP não autentica a identidade de quem envia `advisor_id`. Portanto, isso não equivale a controle de acesso seguro; não publique a aplicação nem use dados financeiros reais.
 
-- [ ] Coleta automática de notícias e cálculo de sentimento por ativo
-- [ ] Open Finance real e cotações alimentando o motor de criticidade
-- [ ] Persistir a agenda no PostgreSQL e configurar migrações com Alembic
-- [ ] Login com JWT e alertas em tempo real (WebSocket)
+Endpoints do assessor:
 
-## Uso de IA no desenvolvimento
+- `GET /api/v1/advisor/{advisor_id}/priorities`
+- `GET /api/v1/advisor/{advisor_id}/news-impact`
+- `GET /api/v1/advisor/{advisor_id}/overview`
 
-O projeto foi desenvolvido com apoio de assistentes de IA (Gemini, Claude e GitHub Copilot). O arquivo [`CLAUDE.md`](./CLAUDE.md) reúne o contexto do repositório usado com o assistente de código.
+### Voz e chat
 
-## Licença
+`POST /api/v1/copilot/transcribe` recebe áudio binário e usa `faster-whisper` localmente. O modelo `tiny` está pré-carregado na imagem Docker; em execução fora dela, o modelo é obtido na primeira utilização. É usado no onboarding e no chat para converter áudio em texto. O chat posterior usa OpenAI e, portanto, exige `OPENAI_API_KEY`.
 
-Distribuído sob a **GNU GPL v3.0** — veja [`LICENSE`](./LICENSE).
+### Dados e limites atuais
+
+PostgreSQL persiste usuários, anotações do assessor e os dados relacionais definidos em `db/01_schema.sql`; carteiras de demonstração, agenda e histórico/contexto do chat têm partes em memória e podem ser reinicializados ao reiniciar a API. Em bancos antigos, a tabela `advisor_notes` é criada sob demanda pelo serviço de anotações e o contexto pessoal existente é migrado para notas na primeira inicialização. RSS/câmbio dependem de serviços externos; cotações podem usar fallback local. `db/schema.sql`, `db/seed.sql`, `db/init_db.py` e `db/app.db` são uma trilha SQLite legada, separada do runtime FastAPI/PostgreSQL, e foram mantidos por serem versionados/documentados.
+
+**Segurança:** este MVP não implementa autenticação. Algumas operações, inclusive anotações, validam a relação entre os IDs informados, mas isso não comprova a identidade de quem chama a API nem substitui autorização por usuário. Mantenha a instalação local, use dados fictícios e não publique os serviços nem use dados financeiros reais.
+
+## Documentação
+
+- [Arquitetura, componentes e diagramas atualizados](documentacao-projeto.html)
+- [Apresentação do projeto](PITCH.md)
+- [Decisões visuais](web/DESIGN.md)
+- [Documentação da trilha SQLite legada](db/README.md)
+- [Licença](LICENSE)

@@ -13,7 +13,11 @@ from src.modules.scheduling.models import (
     MeetingStatus,
     TimeSlot,
 )
-from src.modules.scheduling.services import LOCAL_TZ, SchedulingService, get_scheduling_service
+from src.modules.scheduling.services import (
+    LOCAL_TZ,
+    SchedulingService,
+    get_scheduling_service,
+)
 
 ADVISOR, CLIENT = 1, 10
 # Segunda-feira ao meio-dia; os próximos horários livres são 14h do mesmo dia.
@@ -27,7 +31,9 @@ def _slot(day_offset: int, hour: int) -> TimeSlot:
     return TimeSlot(start=start, end=start + timedelta(minutes=30))
 
 
-def _request(initiated_by: MeetingParty, slot: TimeSlot | None = None) -> MeetingRequest:
+def _request(
+    initiated_by: MeetingParty, slot: TimeSlot | None = None
+) -> MeetingRequest:
     return MeetingRequest(
         client_id=CLIENT,
         advisor_id=ADVISOR,
@@ -70,7 +76,9 @@ def test_overlapping_meeting_is_refused():
     svc = SchedulingService()
     slot = _slot(2, 10)
     svc.schedule(_request(MeetingParty.CLIENT, slot))
-    overlapping = TimeSlot(start=slot.start + timedelta(minutes=15), end=slot.end + timedelta(minutes=15))
+    overlapping = TimeSlot(
+        start=slot.start + timedelta(minutes=15), end=slot.end + timedelta(minutes=15)
+    )
     with pytest.raises(ConflictError):
         svc.schedule(_request(MeetingParty.ADVISOR, overlapping))
 
@@ -82,7 +90,10 @@ def test_client_request_is_confirmed_only_by_advisor():
         svc.confirm(meeting.id, CLIENT, MeetingParty.CLIENT)  # quem pediu não confirma
     with pytest.raises(ForbiddenError):
         svc.confirm(meeting.id, 999, MeetingParty.ADVISOR)  # terceiros também não
-    assert svc.confirm(meeting.id, ADVISOR, MeetingParty.ADVISOR).status == MeetingStatus.CONFIRMED
+    assert (
+        svc.confirm(meeting.id, ADVISOR, MeetingParty.ADVISOR).status
+        == MeetingStatus.CONFIRMED
+    )
 
 
 def test_advisor_request_is_confirmed_only_by_client():
@@ -90,18 +101,29 @@ def test_advisor_request_is_confirmed_only_by_client():
     meeting = svc.schedule(_request(MeetingParty.ADVISOR))
     with pytest.raises(ForbiddenError):
         svc.confirm(meeting.id, ADVISOR, MeetingParty.ADVISOR)
-    assert svc.confirm(meeting.id, CLIENT, MeetingParty.CLIENT).status == MeetingStatus.CONFIRMED
+    assert (
+        svc.confirm(meeting.id, CLIENT, MeetingParty.CLIENT).status
+        == MeetingStatus.CONFIRMED
+    )
 
 
 def test_same_id_on_both_sides_cannot_confirm_own_request():
     # Ids de usuário podem coincidir entre assessor e cliente (seed em memória): o papel decide.
     svc = SchedulingService()
     meeting = svc.schedule(
-        MeetingRequest(client_id=1, advisor_id=1, preferred=_slot(2, 10), initiated_by=MeetingParty.ADVISOR)
+        MeetingRequest(
+            client_id=1,
+            advisor_id=1,
+            preferred=_slot(2, 10),
+            initiated_by=MeetingParty.ADVISOR,
+        )
     )
     with pytest.raises(ForbiddenError):
         svc.confirm(meeting.id, 1, MeetingParty.ADVISOR)
-    assert svc.confirm(meeting.id, 1, MeetingParty.CLIENT).status == MeetingStatus.CONFIRMED
+    assert (
+        svc.confirm(meeting.id, 1, MeetingParty.CLIENT).status
+        == MeetingStatus.CONFIRMED
+    )
 
 
 def test_confirm_twice_and_unknown_meeting():
@@ -122,21 +144,37 @@ def test_http_flow():
         free = http.get(f"/api/v1/scheduling/advisors/{ADVISOR}/free-slots").json()
         assert len(free) == 6
 
-        body = {"client_id": CLIENT, "advisor_id": ADVISOR, "preferred": free[0], "initiated_by": "ADVISOR"}
+        body = {
+            "client_id": CLIENT,
+            "advisor_id": ADVISOR,
+            "preferred": free[0],
+            "initiated_by": "ADVISOR",
+        }
         created = http.post("/api/v1/scheduling/meetings", json=body)
         assert created.status_code == 201
         meeting = created.json()
         assert meeting["status"] == "PENDING" and meeting["initiated_by"] == "ADVISOR"
 
-        assert http.post("/api/v1/scheduling/meetings", json=body).status_code == 409  # mesmo horário
+        assert (
+            http.post("/api/v1/scheduling/meetings", json=body).status_code == 409
+        )  # mesmo horário
 
         confirm = f"/api/v1/scheduling/meetings/{meeting['id']}/confirm"
-        assert http.post(confirm, json={"user_id": ADVISOR, "role": "ADVISOR"}).status_code == 403
+        assert (
+            http.post(confirm, json={"user_id": ADVISOR, "role": "ADVISOR"}).status_code
+            == 403
+        )
         done = http.post(confirm, json={"user_id": CLIENT, "role": "CLIENT"})
         assert done.status_code == 200 and done.json()["status"] == "CONFIRMED"
 
-        assert http.get(f"/api/v1/scheduling/advisors/{ADVISOR}/meetings").json()[0]["id"] == meeting["id"]
-        assert http.get(f"/api/v1/scheduling/clients/{CLIENT}/meetings").json()[0]["id"] == meeting["id"]
+        assert (
+            http.get(f"/api/v1/scheduling/advisors/{ADVISOR}/meetings").json()[0]["id"]
+            == meeting["id"]
+        )
+        assert (
+            http.get(f"/api/v1/scheduling/clients/{CLIENT}/meetings").json()[0]["id"]
+            == meeting["id"]
+        )
         assert http.get("/api/v1/scheduling/clients/77/meetings").json() == []
     finally:
         app.dependency_overrides.clear()
@@ -145,7 +183,11 @@ def test_http_flow():
 def test_meeting_keeps_context_and_can_be_fetched():
     svc = SchedulingService()
     context = MeetingContext(
-        answers=[ContextAnswer(key="motivo", question="Qual o assunto?", answer="CDB vencendo")],
+        answers=[
+            ContextAnswer(
+                key="motivo", question="Qual o assunto?", answer="CDB vencendo"
+            )
+        ],
         summary="Assunto: CDB vencendo",
     )
     req = _request(MeetingParty.CLIENT).model_copy(update={"context": context})

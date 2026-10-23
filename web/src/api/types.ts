@@ -203,6 +203,14 @@ export interface AffectedClient {
   exposure_pct: number;
 }
 
+export interface InterestedClient {
+  client_id: number;
+  client_name: string;
+  matched_interest: string;
+  interest_type: "favorite_team" | "hobby";
+  sentiment: Sentiment;
+}
+
 export interface NewsImpact {
   id: number;
   source: string;
@@ -213,6 +221,7 @@ export interface NewsImpact {
   related_tickers: string[];
   sentiment: Sentiment;
   affected_clients: AffectedClient[];
+  interested_clients: InterestedClient[];
 }
 
 // portfolio: pedido do cliente que vira alerta para o assessor
@@ -260,8 +269,10 @@ export interface BriefingNews {
 }
 
 export interface MeetingBriefing {
+  client_name?: string;
   meeting: Meeting;
   context: MeetingContext | null;
+  follow_up: string;
   portfolio: {
     total_net_worth: Decimal;
     allocation: Array<{ asset_class: AssetClass; value: Decimal; share_pct: number }>;
@@ -295,8 +306,8 @@ export interface Api {
   scheduleMeeting(req: MeetingRequest): Promise<Meeting>;
   confirmMeeting(meetingId: number, viewer: { id: number; role: UserRole }): Promise<Meeting>;
   getMeetingBriefing(advisorId: number, meetingId: number): Promise<MeetingBriefing>;
-  getNotes(clientId: number): Promise<AdvisorNote[]>;
+  getNotes(clientId: number, advisorId: number): Promise<AdvisorNote[]>;
   addNote(clientId: number, advisorId: number, text: string): Promise<AdvisorNote>;
-  editNote(noteId: number, text: string): Promise<AdvisorNote>;
-  deleteNote(noteId: number): Promise<void>;
+  editNote(noteId: number, advisorId: number, text: string): Promise<AdvisorNote>;
+  deleteNote(noteId: number, advisorId: number): Promise<void>;
 }
